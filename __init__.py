@@ -10,10 +10,12 @@ import shutil
 import sys
 import traceback
 
-NODE_CLASS_MAPPINGS = { "Output Filename": Output_Filename
+from .py.outputfilename import OutputFilename
+
+NODE_CLASS_MAPPINGS = { "Output Filename": OutputFilename,
                         }
 
-NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)"
+NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                               }
 
 WEB_DIRECTORY = "js"
