@@ -32,7 +32,7 @@ class OutputFilename:
                              'file_input_5': ('STRING', {'default': ''})
                              }}
 
-    RETURN_NAMES = ('FileNamePath','Path','FileName')
+    RETURN_NAMES = ('FileNamePath','FilePath','FileName')
     RETURN_TYPES = ('STRING','STRING','STRING')
     FUNCTION = 'OutputFilename'
     CATEGORY = 'Soze/strings'
