@@ -1,5 +1,6 @@
 import torch
 import os
+import re
 import numpy as np
 import hashlib
 
@@ -21,7 +22,7 @@ class LoadImage:
 
     CATEGORY = "image"
 
-    RETURN_NAMES = ("Image", "Mask", "ImageFilePath", "ImageFilename", "ImageFilenameNoExt")
+    RETURN_NAMES = ("Image", "Mask", "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext")
     RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING")
     FUNCTION = "load_image"
     def load_image(self, image):
@@ -93,43 +94,43 @@ class LoadImagesFromFolder:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "folder": ("STRING", {"default": ""}),
+                "Input_Folder": ("STRING", {"default": ""}),
             },
             "optional": {
-                "image_load_cap": ("INT", {"default": 0, "min": 0, "step": 1}),
-                "start_index": ("INT", {"default": 0, "min": 0, "step": 1}),
+                "Image_Load_Count": ("INT", {"default": 1, "min": 0, "step": 1}),
+                "seed": ("INT", {"default": 0, "min": 0, "step": 1}),
             }
         }
 
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("Image", "Mask", "LoadCount", "InputPath", "ImageFileNamePath", "ImageFilename", "ImageFilenameNoExt")
+    RETURN_NAMES = ("Image", "Mask", "Load_Count", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext")
     FUNCTION = "load_images"
 
     CATEGORY = "image"
 
-    def load_images(self, folder, image_load_cap, start_index):
-        if not os.path.isdir(folder):
-            raise FileNotFoundError(f"Folder '{folder} cannot be found.'")
-        dir_files = os.listdir(folder)
+    def load_images(self, Input_Folder, Image_Load_Count, seed):
+        if not os.path.isdir(Input_Folder):
+            raise FileNotFoundError(f"Folder '{Input_Folder} cannot be found.'")
+        dir_files = os.listdir(Input_Folder)
         if len(dir_files) == 0:
-            raise FileNotFoundError(f"No files in directory '{folder}'.")
+            raise FileNotFoundError(f"No files in directory '{Input_Folder}'.")
 
         # Filter files by extension
         valid_extensions = ['.jpg', '.jpeg', '.png', '.webp']
         dir_files = [f for f in dir_files if any(f.lower().endswith(ext) for ext in valid_extensions)]
 
         dir_files = sorted(dir_files)
-        dir_files = [os.path.join(folder, x) for x in dir_files]
+        dir_files = [os.path.join(Input_Folder, x) for x in dir_files]
 
         # start at start_index
-        dir_files = dir_files[start_index:]
+        dir_files = dir_files[seed:]
 
         images = []
         masks = []
         image_path_list = []
 
         limit_images = False
-        if image_load_cap > 0:
+        if Image_Load_Count > 0:
             limit_images = True
         image_count = 0
 
@@ -138,7 +139,7 @@ class LoadImagesFromFolder:
         for image_path in dir_files:
             if os.path.isdir(image_path) and os.path.ex:
                 continue
-            if limit_images and image_count >= image_load_cap:
+            if limit_images and image_count >= Image_Load_Count:
                 break
             i = Image.open(image_path)
             i = ImageOps.exif_transpose(i)
@@ -161,7 +162,7 @@ class LoadImagesFromFolder:
             input_filenamepath = folder_paths.get_annotated_filepath(image_path_list[0])
             input_filename = os.path.basename(input_filenamepath)
             input_filename_no_ext = os.path.splitext(input_filename)[0]
-            return (images[0], masks[0], 1, folder, input_filenamepath, input_filename, input_filename_no_ext)
+            return (images[0], masks[0], 1, Input_Folder, input_filenamepath, input_filename, input_filename_no_ext)
 
         elif len(images) > 1:
             image1 = images[0]
@@ -191,9 +192,65 @@ class LoadImagesFromFolder:
             input_filename = os.path.basename(input_filenamepath)
             input_filename_no_ext = os.path.splitext(input_filename)[0]
 
-            return (image1, mask1, len(images), folder, input_filenamepath, input_filename, input_filename_no_ext)
+            return (image1, mask1, len(images), Input_Folder, input_filenamepath, input_filename, input_filename_no_ext)
 
     @classmethod
     def IS_CHANGED(cls, *args, **kwargs):
         # Return a value that changes each time to force re-execution
         return float("NaN")
+
+
+# Code from https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes
+#Added filename outputs etc
+class BatchProcessSwitch:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "Input": (["Image", "Image Batch"],),
+            },
+            "optional": {
+                "Image": ("IMAGE", ),
+                "Image_Batch": ("IMAGE", ),
+                "Image_Filename_Path_Passthrough": ("STRING", {"default": "", "forceInput": True}),
+                "Image_Batch_Filename_Path_Passthrough": ("STRING", {"default": "", "forceInput": True})
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGE", "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext")
+    FUNCTION = "switch"
+    CATEGORY = "Process"
+
+    def switch(self, Input, Image=None, Image_Batch=None, Image_Filename_Path_Passthrough="", Image_Batch_Filename_Path_Passthrough=""):
+        input_filenamepath = ""
+        input_filename = ""
+        input_filename_no_ext = ""
+
+        if Input == "Image":
+            if Image_Filename_Path_Passthrough != "":
+                try: input_filenamepath = folder_paths.get_annotated_filepath(Image_Filename_Path_Passthrough) 
+                except Exception: pass
+                try: input_filename = os.path.basename(input_filenamepath)
+                except Exception: pass
+                try: input_filename_no_ext = os.path.splitext(input_filename)[0]
+                except Exception: pass
+            return (Image, input_filenamepath, input_filename, input_filename_no_ext)
+        else:
+            if Image_Batch_Filename_Path_Passthrough != "":
+                try: input_filenamepath = folder_paths.get_annotated_filepath(Image_Batch_Filename_Path_Passthrough)
+                except Exception: pass
+                try: input_filename = os.path.basename(input_filenamepath)
+                except Exception: pass
+                try: input_filename_no_ext = os.path.splitext(input_filename)[0]
+                except Exception: pass
+            return (Image_Batch, input_filenamepath, input_filename, input_filename_no_ext)
+    
+
+        
+            
+
+
