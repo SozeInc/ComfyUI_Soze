@@ -8,7 +8,7 @@ class CSVReader:
         return {
             "required": {
                 "csv_filename": ("STRING", {"default": "data.csv"}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 1000000, "step": 1, "control_after_generate": "increment"})
+                "seed": ("INT", {"default": 0, "min": 0, "max": 1000000, "step": 1})
             }
         }
 
@@ -19,7 +19,7 @@ class CSVReader:
     OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(s, *args):
+    def IS_CHANGED(s, csv_filename, seed):
         return float("nan")
     
     def strip_quotes(self, value):
