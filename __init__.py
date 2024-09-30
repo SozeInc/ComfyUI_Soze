@@ -14,17 +14,20 @@ from .py.outputfilename import OutputFilename
 from .py.images import LoadImage
 from .py.images import LoadImagesFromFolder
 from .py.images import BatchProcessSwitch
+from .py.csvreader import CSVReader
 
 NODE_CLASS_MAPPINGS = { "Output Filename": OutputFilename,
                        "Load Image": LoadImage,
                           "Load Images From Folder": LoadImagesFromFolder,
                             "Image Batch Process Switch": BatchProcessSwitch,
+                            "CSV Reader": CSVReader,
                         }
 
 NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Load Image": "Load Image (Soze)",
                                 "Load Images From Folder": "Load Images From Folder (Soze)",
                                 "Image Batch Process Switch": "Image Batch Process Switch (Soze)",
+                                "CSV Reader": "CSV Reader (Soze)",
                               }
 
 WEB_DIRECTORY = "js"
