@@ -26,8 +26,12 @@ class CSVReader:
         return value.strip('"')
 
     def read_csv(self, csv_filename, seed):
+        csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename)
+        
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(f"CSV file not found: {csv_path}")
+        
         try:
-            csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename)
             with open(csv_path, 'r', newline='') as csvfile:
                 csv_reader = csv.reader(csvfile)
                 rows = list(csv_reader)
@@ -41,6 +45,8 @@ class CSVReader:
                 stripped_row = [self.strip_quotes(value) for value in row]
                 output = stripped_row[:10] + [""] * (10 - len(stripped_row))
                 return tuple(output + [row_count])
+        except FileNotFoundError:
+            raise  # Re-raise the FileNotFoundError
         except Exception as e:
             print(f"Error reading CSV: {str(e)}")
             return tuple([""] * 10 + [0])
