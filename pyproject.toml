@@ -1,7 +1,7 @@
 [project]
 name = "comfyui_soze"
-description = "Nodes: Ultimate Concat (Mobile), Send Notification (Mobile), Settings Launcher (Mobile), Settings Launcher Outputs (Mobile)"
-version = "1.0.0"
+description = "Nodes: "Output Filename (Soze), Load Image (Soze), Load Images From Folder (Soze), Image Batch Process Switch (Soze), CSV Reader (Soze)"
+version = "1.0.1"
 license = "LICENSE"
 dependencies = ["requests"]
 
