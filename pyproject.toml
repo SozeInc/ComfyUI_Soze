@@ -1,7 +1,7 @@
 [project]
 name = "comfyui_soze"
 description = "Nodes: "Output Filename (Soze), Load Image (Soze), Load Images From Folder (Soze), Image Batch Process Switch (Soze), CSV Reader (Soze)"
-version = "1.0.1"
+version = "1.0.0"
 license = "LICENSE"
 dependencies = ["requests"]
 
