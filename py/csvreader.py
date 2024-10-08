@@ -1,3 +1,4 @@
+import time
 import csv
 import os
 import random
@@ -7,7 +8,7 @@ class CSVReader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "csv_filename": ("STRING", {"default": "data.csv"}),
+                "csv_filename_path": ("STRING", {"default": "data.csv"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 1000000, "step": 1})
             },
             "optional": {
@@ -22,17 +23,17 @@ class CSVReader:
     OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(s, csv_filename, csv_text, seed):
-        return float("nan")
+    def IS_CHANGED(self, csv_filename_path, csv_text, seed):
+        return time.time()    
     
     def strip_quotes(self, value):
         return value.strip('"')
 
-    def read_csv(self, csv_filename, csv_text, seed):
+    def read_csv(self, csv_filename_path, csv_text, seed):
         if csv_text.strip() != '':
             csv_data = csv_text.splitlines()
         else:
-            csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename)
+            csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename_path)
             if not os.path.exists(csv_path):
                 raise FileNotFoundError(f"CSV file not found: {csv_path}")
             try:
