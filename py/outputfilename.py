@@ -19,13 +19,13 @@ class OutputFilename:
     def INPUT_TYPES(cls):
         return {'required': {'Path_Delimiter': ('STRING', {'default': '/'}),
                              'File_Delimiter': ('STRING', {'default': '-'}),
-                             'Path_Input_2': ('STRING', {'default': '', 'isInput': True }),
-                             'File_Input_1': ('STRING', {'default': '', 'isInput': True }),
                              },
                 'optional': {'Path_Input_1': ('STRING', {'default': '.'}),
-                             'Path_Input_3': ('STRING', {'default': ''}),
-                             'Path_Input_4': ('STRING', {'default': ''}),
+                             'Path_Input_2': ('STRING', {'default': 'ProjectName', 'isInput': True }),
+                             'Path_Input_3': ('STRING', {'default': '%date:yyyy-MM-dd%'}),
+                             'Path_Input_4': ('STRING', {'default': 'GenerationType'}),
                              'Path_Input_5': ('STRING', {'default': ''}),
+                             'File_Input_1': ('STRING', {'default': '', 'isInput': True }),
                              'File_Input_2': ('STRING', {'default': ''}),
                              'File_Input_3': ('STRING', {'default': ''}),
                              'File_Input_4': ('STRING', {'default': ''}),
@@ -35,7 +35,7 @@ class OutputFilename:
     RETURN_NAMES = ('Filename_&_Path','Path','Filename')
     RETURN_TYPES = ('STRING','STRING','STRING')
     FUNCTION = 'OutputFilename'
-    CATEGORY = 'Soze/strings'
+    CATEGORY = 'strings'
 
     def OutputFilename(self, Path_Delimiter, Path_Input_1, Path_Input_2, Path_Input_3, Path_Input_4, Path_Input_5, File_Delimiter, File_Input_1, File_Input_2, File_Input_3, File_Input_4, File_Input_5):
         paths = []
