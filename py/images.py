@@ -126,10 +126,10 @@ class LoadImagesFromFolder:
 
     def load_images(self, Input_Folder, Image_Load_Count, seed):
         if not os.path.isdir(Input_Folder):
-            raise FileNotFoundError(f"Folder '{Input_Folder} cannot be found.'")
+            raise FileNotFoundError(f"Folder not found: {Input_Folder}")
         dir_files = os.listdir(Input_Folder)
         if len(dir_files) == 0:
-            raise FileNotFoundError(f"No files in directory '{Input_Folder}'.")
+            raise FileNotFoundError(f"Folder only has {len(dir_files)} files in it: {Input_Folder}")
 
         # Filter files by extension
         valid_extensions = ['.jpg', '.jpeg', '.png', '.webp']

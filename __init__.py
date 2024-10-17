@@ -18,6 +18,7 @@ from .py.images import LoadImageFromUrl
 from .py.csvreader import CSVReader
 from .py.csvwriter import CSVWriter
 from .py.strings import StringReplacer
+from .py.strings import MultilineConcatenateStrings
 
 
 NODE_CLASS_MAPPINGS = { "Output Filename": OutputFilename,
@@ -28,6 +29,7 @@ NODE_CLASS_MAPPINGS = { "Output Filename": OutputFilename,
                             "CSV Reader": CSVReader,
                             "CSV Writer": CSVWriter,
                           "String Replacer": StringReplacer,
+                          "Multiline Concatenate Strings": MultilineConcatenateStrings,
 
                         }
 
@@ -39,6 +41,7 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "CSV Reader": "CSV Reader (Soze)",
                                 "CSV Writer": "CSV Writer (Soze)",
                                 "String Replacer": "String Replacer (Soze)",
+                                "Multiline Concatenate Strings": "Multiline Concatenate (Soze)",
                               }
 
 WEB_DIRECTORY = "js"

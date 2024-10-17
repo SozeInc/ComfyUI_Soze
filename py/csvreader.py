@@ -8,11 +8,11 @@ class CSVReader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "csv_filename_path": ("STRING", {"default": "data.csv"}),
+                "csv_filename_path": ("STRING", {"default": "","multiline": True}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 1000000, "step": 1})
             },
             "optional": {
-                "csv_text": ("STRING", {"default": ""})
+                "csv_text": ("STRING", {"default": "","multiline": True})
             }
         }
 
@@ -33,16 +33,19 @@ class CSVReader:
         if csv_text.strip() != '':
             csv_data = csv_text.splitlines()
         else:
-            csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename_path)
-            if not os.path.exists(csv_path):
-                raise FileNotFoundError(f"CSV file not found: {csv_path}")
-            try:
-                with open(csv_path, 'r', newline='') as csvfile:
-                    csv_data = csvfile.readlines()
-            except FileNotFoundError:
-                raise  # Re-raise the FileNotFoundError
-            except Exception as e:
-                print(f"Error reading CSV: {str(e)}")
+            if csv_filename_path.strip() != "":
+                csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename_path)
+                if not os.path.exists(csv_path):
+                    raise FileNotFoundError(f"CSV file not found: {csv_path}")
+                try:
+                    with open(csv_path, 'r', newline='') as csvfile:
+                        csv_data = csvfile.readlines()
+                except FileNotFoundError:
+                    raise  # Re-raise the FileNotFoundError
+                except Exception as e:
+                    print(f"Error reading CSV: {str(e)}")
+                    return tuple([""] * 10 + [0])
+            else:
                 return tuple([""] * 10 + [0])
 
         csv_reader = csv.reader(csv_data)

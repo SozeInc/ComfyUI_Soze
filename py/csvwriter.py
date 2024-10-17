@@ -7,7 +7,7 @@ class CSVWriter:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "csv_filename_path": ("STRING", {"default": "data.csv"}),
+                "csv_filename_path": ("STRING", {"default": "","multiline": True}),
                 "value1": ("STRING", {"default": "", 'isInput': True }),
                 "value2": ("STRING", {"default": "", 'isInput': True }),
             },
@@ -48,14 +48,17 @@ class CSVWriter:
         # Create a comma-separated line
         csv_line = ','.join(wrapped_values) + '\n'
         
-        # Ensure the directory exists
-        os.makedirs(os.path.dirname(csv_filename_path), exist_ok=True)
-        
-        # Append the line to the CSV file, creating it if it doesn't exist
-        try:
-            with open(csv_filename_path, 'a', newline='') as csvfile:
-                csvfile.write(csv_line)
-            return csv_line
-        except Exception as e:
-            raise FileNotFoundError(f"CSV file not found: {csv_filename_path}")
+        if csv_filename_path.strip() != "":
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(csv_filename_path), exist_ok=True)
+            
+            # Append the line to the CSV file, creating it if it doesn't exist
+            try:
+                with open(csv_filename_path, 'a', newline='') as csvfile:
+                    csvfile.write(csv_line)
+                return csv_line
+            except Exception as e:
+                raise FileNotFoundError(f"CSV file not found: {csv_filename_path}")
+                return ""
+        else:
             return ""
