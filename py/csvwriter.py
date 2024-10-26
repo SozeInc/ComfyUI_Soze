@@ -2,7 +2,7 @@ import time
 import csv
 import os
 
-class CSVWriter:
+class Soze_CSVWriter:
     @classmethod
     def INPUT_TYPES(s):
         return {

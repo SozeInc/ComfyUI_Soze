@@ -3,7 +3,7 @@ import csv
 import os
 import random
 
-class CSVReader:
+class Soze_CSVReader:
     @classmethod
     def INPUT_TYPES(s):
         return {

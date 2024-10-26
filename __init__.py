@@ -10,26 +10,53 @@ import shutil
 import sys
 import traceback
 
-from .py.outputfilename import OutputFilename
-from .py.images import LoadImage
-from .py.images import LoadImagesFromFolder
-from .py.images import BatchProcessSwitch
-from .py.images import LoadImageFromUrl
-from .py.csvreader import CSVReader
-from .py.csvwriter import CSVWriter
-from .py.strings import StringReplacer
-from .py.strings import MultilineConcatenateStrings
+from .py.outputfilename import Soze_OutputFilename
+from .py.images import Soze_LoadImage
+from .py.images import Soze_LoadImagesFromFolder
+from .py.images import Soze_BatchProcessSwitch
+from .py.images import Soze_LoadImageFromUrl
+from .py.csvreader import Soze_CSVReader
+from .py.csvwriter import Soze_CSVWriter
+from .py.strings import Soze_StringReplacer
+from .py.strings import (
+    Soze_MultilineConcatenateStrings,
+    Soze_PromptCache)
+from .py.range_nodes import (
+    Soze_IntRangeNode,
+    Soze_FloatRangeNode,
+    Soze_IntNumStepsRangeNode,
+    Soze_FloatNumStepsRangeNode)
+from .py.xy import Soze_UnzippedProductAny
+
+from .py.images import (
+    Soze_ImageLabelOverlay,
+    Soze_EmptyImages,
+    Soze_XYImage,
+    Soze_ImageListLoader,
+    Soze_VariableImageBuilder,
+)
 
 
-NODE_CLASS_MAPPINGS = { "Output Filename": OutputFilename,
-                       "Load Image": LoadImage,
-                          "Load Images From Folder": LoadImagesFromFolder,
-                            "Image Batch Process Switch": BatchProcessSwitch,
-                            "Load Image From URL": LoadImageFromUrl,
-                            "CSV Reader": CSVReader,
-                            "CSV Writer": CSVWriter,
-                          "String Replacer": StringReplacer,
-                          "Multiline Concatenate Strings": MultilineConcatenateStrings,
+NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
+                        "Load Image": Soze_LoadImage,
+                        "Load Images From Folder": Soze_LoadImagesFromFolder,
+                        "Image Batch Process Switch": Soze_BatchProcessSwitch,
+                        "Load Image From URL": Soze_LoadImageFromUrl,
+                        "CSV Reader": Soze_CSVReader,
+                        "CSV Writer": Soze_CSVWriter,
+                        "String Replacer": Soze_StringReplacer,
+                        "Multiline Concatenate Strings": Soze_MultilineConcatenateStrings,
+                        "Range(Step) - Int": Soze_IntRangeNode,
+                        "Range(Num Steps) - Int": Soze_IntNumStepsRangeNode,
+                        "Range(Step) - Float": Soze_FloatRangeNode,
+                        "Range(Num Steps) - Float": Soze_FloatNumStepsRangeNode,
+                        "XY Any": Soze_UnzippedProductAny,
+                        "XY Image": Soze_XYImage,
+                        "Image Overlay": Soze_ImageLabelOverlay,
+                        "Empty Images": Soze_EmptyImages,
+                        "Image List Loader": Soze_ImageListLoader,
+                        "Variable Image Builder": Soze_VariableImageBuilder,
+                        "Prompt Cache": Soze_PromptCache,
 
                         }
 
@@ -42,6 +69,17 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "CSV Writer": "CSV Writer (Soze)",
                                 "String Replacer": "String Replacer (Soze)",
                                 "Multiline Concatenate Strings": "Multiline Concatenate (Soze)",
+                                "Range(Step) - Int": "Int Step Range (Soze)",
+                                "Range(Num Steps) - Int": "Int Step Count Range (Soze)",
+                                "Range(Step) - Float": "Float Step Range (Soze)",
+                                "Range(Num Steps) - Float": "Float Step Count Range (Soze)",
+                                "XY Any": "XY Any (Soze)",
+                                "XY Image": "XY Image (Soze)",
+                                "Image Overlay": "Image Overlay (Soze)",
+                                "Empty Images": "Empty Images (Soze)",
+                                "Image List Loader": "Image List Loader (Soze)",
+                                "Variable Image Builder": "Variable Image Builder (Soze)",
+                                "Prompt Cache": "Prompt Cache (Soze)",
                               }
 
 WEB_DIRECTORY = "js"

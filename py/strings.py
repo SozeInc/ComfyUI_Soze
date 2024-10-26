@@ -1,13 +1,19 @@
 import numpy as np
 import re
 
-class StringReplacer:
+from custom_nodes.ComfyUI_Soze.utils import (
+    read_from_file,
+    write_to_file
+)
+
+
+class Soze_StringReplacer:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "input_string": ("STRING", {"forceInput": True,"multiline": True}),
-                "replace_chars": ("STRING", {"default": '",-,;,:,/,\,|,<,>,?,{,},[,],(,),=,+,*,^,&,%,#,!,~,`,.,/n'}),
+                "replace_chars": ("STRING", {"default": '",-,;,:,/,\,|,<,>,?,{,},[,],(,),=,+,*,^,&,%,#,!,~,`,.', "multiline": True}),
                 "replace_with": ("STRING", {"default": ""}),
                 "max_length": ("INT", {"default": 0, "min": 0, "max": 1000000, "step": 1})
             }
@@ -33,7 +39,7 @@ class StringReplacer:
         else:
             return (result,)        
 
-class MultilineConcatenateStrings:
+class Soze_MultilineConcatenateStrings:
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -60,3 +66,31 @@ class MultilineConcatenateStrings:
         # Join the non-empty strings with the separator
         result = separator.join(non_empty_strings)
         return (result,)
+
+
+class Soze_PromptCache:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "use_new_prompt": ("BOOL", {"default": True}),
+                "new_prompt": ("STRING", {"default": "", "forceInput": True}),
+            }
+        }
+
+    RETURN_NAMES = ("output_prompt", "is_new_prompt")
+    RETURN_TYPES = ("STRING", "BOOL")
+    FUNCTION = "prompt_with_cache"
+    CATEGORY = "strings"
+
+    def prompt_with_cache(self, new_prompt, use_new_prompt):
+        if use_new_prompt:
+            write_to_file('sozepromptcache.txt', new_prompt)
+            return (new_prompt, True)
+        else:
+            old_prompt = read_from_file('sozepromptcache.txt')
+            write_to_file('sozepromptcache.txt', new_prompt)
+            if old_prompt:
+                return (old_prompt, False)
+            else:
+                return (new_prompt, True)

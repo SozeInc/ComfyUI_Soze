@@ -20,7 +20,7 @@ comfy_dir = os.path.abspath(os.path.join(mobilenodes_dir, '..', '..'))
 
 ########################################################################################################################
 # Ultimate_Concat
-class Ultimate_Concat:
+class Soze_Ultimate_Concat:
     @classmethod
     def INPUT_TYPES(cls):
         concat_max = 25

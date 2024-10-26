@@ -14,7 +14,7 @@ def replace_date_placeholders(text):
     
     return re.sub(r'%date:([^%]+)%', replace_match, text)
 
-class OutputFilename:
+class Soze_OutputFilename:
     @classmethod
     def INPUT_TYPES(cls):
         return {'required': {'Path_Delimiter': ('STRING', {'default': '/'}),
