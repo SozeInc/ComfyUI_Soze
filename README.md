@@ -7,6 +7,6 @@ Nodes are primarily additions to existing nodes to allow passthrough for filenam
 
 I have also subsumed the Comfy_KepListStuff from https://github.com/M1kep/Comfy_KepListStuff into this repo as the Kep repo is abandoned.
 
-![workflow](https://github.com/user-attachments/assets/94532cf8-6cce-42f5-8785-1a8010698e61)
+![workflow (1)](https://github.com/user-attachments/assets/a8f2869a-f678-49f7-ac78-4616fb1f9f43)
 
 All respect to the original creators, if any of them find this repo and would like a PR for these features in the nodes I have created these from, contact me and I am happy to transfer these customizations to the original owners.
