@@ -13,7 +13,7 @@ from PIL import ImageFont, ImageDraw, Image
 import matplotlib.font_manager as fm
 from torch import Tensor
 
-from custom_nodes.ComfyUI_Soze.utils import (
+from ..utils import (
     zip_with_fill,
     tensor2pil,
     pil2tensor,

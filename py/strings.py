@@ -1,7 +1,7 @@
 import numpy as np
 import re
 
-from custom_nodes.ComfyUI_Soze.utils import (
+from ..utils import (
     read_from_file,
     write_to_file
 )

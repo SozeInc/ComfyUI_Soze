@@ -7,7 +7,7 @@ from typing import Iterator, List, Tuple, Dict, Any, Union, Optional
 
 import numpy as np
 
-from custom_nodes.ComfyUI_Soze.utils import (
+from ..utils import (
     error_if_mismatched_list_args,
     zip_with_fill,
 )
