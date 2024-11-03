@@ -50,7 +50,7 @@ class Soze_UnzippedProductAny:
     INPUT_IS_LIST = True
     FUNCTION = "to_xy"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "xy"
 
     def to_xy(
         self,

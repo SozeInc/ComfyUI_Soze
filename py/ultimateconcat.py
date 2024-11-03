@@ -42,7 +42,7 @@ class Soze_Ultimate_Concat:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("STRING",)
     FUNCTION = "concatenate_all"
-    CATEGORY = "Comfy Mobile"
+    CATEGORY = "strings"
 
     def concatenate_all(self, concat_count, delimiter, **kwargs):
         # Handle special case where delimiter is "\n" (literal newline).

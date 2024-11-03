@@ -36,7 +36,7 @@ class Soze_IntRangeNode:
     OUTPUT_IS_LIST = (True, True)
     FUNCTION = "build_range"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "range"
 
     def build_range(
         self, start: List[int], stop: List[int], step: List[int], end_mode: List[str]
@@ -82,7 +82,7 @@ class Soze_IntNumStepsRangeNode:
     OUTPUT_IS_LIST = (True, True)
     FUNCTION = "build_range"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "range"
 
     def build_range(
         self,
@@ -143,7 +143,7 @@ class Soze_FloatRangeNode:
     OUTPUT_IS_LIST = (True, True)
     FUNCTION = "build_range"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "range"
 
     @staticmethod
     def _decimal_range(
@@ -209,7 +209,7 @@ class Soze_FloatNumStepsRangeNode:
     OUTPUT_IS_LIST = (True, True)
     FUNCTION = "build_range"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "range"
 
     @staticmethod
     def _decimal_range(

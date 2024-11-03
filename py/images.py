@@ -266,7 +266,7 @@ class Soze_BatchProcessSwitch:
     RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("IMAGE", "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext")
     FUNCTION = "switch"
-    CATEGORY = "Process"
+    CATEGORY = "batch"
 
     def switch(self, Input, Image=None, Image_Batch=None, Image_Filename_Path_Passthrough="", Image_Batch_Filename_Path_Passthrough=""):
         input_filenamepath = ""
@@ -331,6 +331,7 @@ class Soze_LoadImageFromUrl:
         )
 
 
+# Node from abandoned repo https://github.com/M1kep/Comfy_KepListStuff 
 
 class Soze_ImageLabelOverlay:
     def __init__(self) -> None:
@@ -356,7 +357,7 @@ class Soze_ImageLabelOverlay:
     OUTPUT_IS_LIST = (True,)
     FUNCTION = "put_overlay"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "image"
 
     def put_overlay(
             self,
@@ -420,6 +421,8 @@ class AnyType(str):
 # Our any instance wants to be a wildcard string
 ANY = AnyType("*")
 
+# Node from abandoned repo https://github.com/M1kep/Comfy_KepListStuff 
+
 class Soze_XYImage:
     def __init__(self) -> None:
         pass
@@ -452,7 +455,7 @@ class Soze_XYImage:
     OUTPUT_NODE = True
     FUNCTION = "xy_image"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "image"
 
 
     MAIN_LABEL_SIZE = 60
@@ -697,6 +700,8 @@ class Soze_XYImage:
             images.append(pil2tensor(full_image))
         return (images,)
 
+# Node from abandoned repo https://github.com/M1kep/Comfy_KepListStuff 
+
 class Soze_VariableImageBuilder:
     def __init__(self) -> None:
         pass
@@ -721,7 +726,7 @@ class Soze_VariableImageBuilder:
     OUTPUT_IS_LIST = (False,)
     FUNCTION = "generate_images"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "image"
 
     def generate_images(
             self,
@@ -739,6 +744,7 @@ class Soze_VariableImageBuilder:
             batch_tensors.append(pil2tensor(image))
         return (torch.cat(batch_tensors),)
 
+# Node from abandoned repo https://github.com/M1kep/Comfy_KepListStuff 
 
 class Soze_EmptyImages:
     def __init__(self) -> None:
@@ -763,7 +769,7 @@ class Soze_EmptyImages:
     OUTPUT_NODE = True
     FUNCTION = "generate_empty_images"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "image"
 
     def generate_empty_images(
             self,
@@ -828,6 +834,8 @@ class Soze_EmptyImages:
                 ret_images.append(batch_tensor)
         return (ret_images,)
 
+# Node from abandoned repo https://github.com/M1kep/Comfy_KepListStuff 
+
 class Soze_ImageListLoader:
     def __init__(self) -> None:
         pass
@@ -849,7 +857,7 @@ class Soze_ImageListLoader:
     OUTPUT_IS_LIST = (True,)
     FUNCTION = "load_images"
 
-    CATEGORY = "List Stuff"
+    CATEGORY = "image"
 
     @staticmethod
     def numerical_sort(file_name: Path) -> int:
