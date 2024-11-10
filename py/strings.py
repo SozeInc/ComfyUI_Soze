@@ -94,3 +94,33 @@ class Soze_PromptCache:
                 return (old_prompt, False)
             else:
                 return (new_prompt, True)
+            
+
+
+class Soze_ChooseFromList:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "input": ("STRING", {"default": "", "forceInput": True}),
+                "list": ("STRING", {"default": "", "multiline": True}),
+                "unmatched_value": ("STRING", {"default": "", "forceInput": True}),
+            }
+        }
+
+    RETURN_NAMES = ("output")
+    RETURN_TYPES = ("STRING")
+    FUNCTION = "choose_from_list"
+    CATEGORY = "strings"
+
+    def choose_from_list(self, input, list, unmatched_value):
+        # Convert the list to an array
+        array = list.splitlines()
+        
+        # Check for a case-insensitive match
+        for item in array:
+            if input.lower() == item.lower():
+                return item
+        
+        # Return unmatched_value if no match is found
+        return unmatched_value

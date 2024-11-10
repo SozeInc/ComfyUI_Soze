@@ -17,16 +17,20 @@ from .py.images import Soze_BatchProcessSwitch
 from .py.images import Soze_LoadImageFromUrl
 from .py.csvreader import Soze_CSVReader
 from .py.csvwriter import Soze_CSVWriter
-from .py.strings import Soze_StringReplacer
+from .py.xy import Soze_UnzippedProductAny
+
 from .py.strings import (
+    Soze_StringReplacer,
     Soze_MultilineConcatenateStrings,
-    Soze_PromptCache)
+    Soze_PromptCache,
+    Soze_ChooseFromList)
+
 from .py.range_nodes import (
     Soze_IntRangeNode,
     Soze_FloatRangeNode,
     Soze_IntNumStepsRangeNode,
     Soze_FloatNumStepsRangeNode)
-from .py.xy import Soze_UnzippedProductAny
+
 
 from .py.images import (
     Soze_ImageLabelOverlay,
@@ -35,7 +39,6 @@ from .py.images import (
     Soze_ImageListLoader,
     Soze_VariableImageBuilder,
 )
-
 
 NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Load Image": Soze_LoadImage,
@@ -57,7 +60,7 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Image List Loader": Soze_ImageListLoader,
                         "Variable Image Builder": Soze_VariableImageBuilder,
                         "Prompt Cache": Soze_PromptCache,
-
+                        "Choose From List": Soze_ChooseFromList
                         }
 
 NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
@@ -80,6 +83,7 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Image List Loader": "Image List Loader (Soze)",
                                 "Variable Image Builder": "Variable Image Builder (Soze)",
                                 "Prompt Cache": "Prompt Cache (Soze)",
+                                "Choose From List": "Choose From List (Soze)"
                               }
 
 WEB_DIRECTORY = "js"
