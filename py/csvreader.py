@@ -53,7 +53,7 @@ class Soze_CSVReader:
         row_count = len(rows)
         
         if seed >= row_count:
-            return tuple([""] * 10 + [row_count])
+            raise ValueError(f"There are no more rows in the CSV file ({row_count})")
         
         row = rows[seed]
         # Strip quotes from each value in the row
