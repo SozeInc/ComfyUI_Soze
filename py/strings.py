@@ -1,12 +1,39 @@
 import numpy as np
 import re
 
-from ..utils import (
+from .utils import (
     read_from_file,
     write_to_file
 )
 
+# class Soze_IsInputInList:
+#     @classmethod
+#     def INPUT_TYPES(s):
+#         return {
+#             "required": {
+#                 "input_value": ("STRING", {"default": "", "forceInput": True}),
+#                 "unmatched_value": ("STRING", {"default": ""}),
+#                 "csv_list": ("STRING", {"default": "", "multiline": True}),
+#             }
+#         }
 
+#     RETURN_NAMES = ("result",)
+#     RETURN_TYPES = ("STRING",)
+#     FUNCTION = "choose_from_list"
+#     CATEGORY = "strings"
+
+#     def choose_from_list(self, input_value, csv_list, unmatched_value):
+#         # Convert the list to an array
+#         array = csv_list.split(',')
+        
+#         # Check for a case-insensitive match
+#         for item in array:
+#             if input_value.lower() == item.lower():
+#                 return str(item.strip())
+        
+#         # Return unmatched_value if no match is found
+#         return unmatched_value
+    
 class Soze_StringReplacer:
     @classmethod
     def INPUT_TYPES(s):
@@ -15,6 +42,7 @@ class Soze_StringReplacer:
                 "input_string": ("STRING", {"forceInput": True,"multiline": True}),
                 "replace_chars": ("STRING", {"default": '",-,;,:,/,\,|,<,>,?,{,},[,],(,),=,+,*,^,&,%,#,!,~,`,.', "multiline": True}),
                 "replace_with": ("STRING", {"default": ""}),
+                "strip_newlines": ("BOOLEAN", {"default": True}),
                 "max_length": ("INT", {"default": 0, "min": 0, "max": 1000000, "step": 1})
             }
         }
@@ -24,7 +52,7 @@ class Soze_StringReplacer:
     FUNCTION = "replace_characters"
     CATEGORY = "strings"
 
-    def replace_characters(self, input_string, replace_with, replace_chars, max_length):
+    def replace_characters(self, input_string, replace_with, replace_chars, strip_newlines, max_length):
         # Split the replace_chars string into a list
         chars_to_replace = replace_chars.split(',')
         
@@ -33,6 +61,10 @@ class Soze_StringReplacer:
         
         # Perform the replacement
         result = re.sub(pattern, replace_with, input_string)
+
+        # Strip newlines if requested
+        if strip_newlines:
+            result = result.replace('\n', '').replace('\r', '')
 
         if max_length > 0:
             return (result[:max_length],)
@@ -97,30 +129,3 @@ class Soze_PromptCache:
             
 
 
-class Soze_ChooseFromList:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "input": ("STRING", {"default": "", "forceInput": True}),
-                "list": ("STRING", {"default": "", "multiline": True}),
-                "unmatched_value": ("STRING", {"default": "", "forceInput": True}),
-            }
-        }
-
-    RETURN_NAMES = ("output")
-    RETURN_TYPES = ("STRING")
-    FUNCTION = "choose_from_list"
-    CATEGORY = "strings"
-
-    def choose_from_list(self, input, list, unmatched_value):
-        # Convert the list to an array
-        array = list.splitlines()
-        
-        # Check for a case-insensitive match
-        for item in array:
-            if input.lower() == item.lower():
-                return item
-        
-        # Return unmatched_value if no match is found
-        return unmatched_value

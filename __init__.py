@@ -23,7 +23,8 @@ from .py.strings import (
     Soze_StringReplacer,
     Soze_MultilineConcatenateStrings,
     Soze_PromptCache,
-    Soze_ChooseFromList)
+    # Soze_IsInputInList
+    )
 
 from .py.range_nodes import (
     Soze_IntRangeNode,
@@ -60,7 +61,7 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Image List Loader": Soze_ImageListLoader,
                         "Variable Image Builder": Soze_VariableImageBuilder,
                         "Prompt Cache": Soze_PromptCache,
-                        "Choose From List": Soze_ChooseFromList
+                        # "Is Input In List": Soze_IsInputInList,
                         }
 
 NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
@@ -83,7 +84,8 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Image List Loader": "Image List Loader (Soze)",
                                 "Variable Image Builder": "Variable Image Builder (Soze)",
                                 "Prompt Cache": "Prompt Cache (Soze)",
-                                "Choose From List": "Choose From List (Soze)"
+                                # "Is Input In List": "Is Input In List (Soze)"
+                                
                               }
 
 WEB_DIRECTORY = "js"
