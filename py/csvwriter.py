@@ -8,7 +8,6 @@ class Soze_CSVWriter:
         return {
             "required": {
                 "csv_filename_path": ("STRING", {"default": "","multiline": True}),
-                "write_line": ("BOOL", {"default": True,"multiline": True}),
                 "value1": ("STRING", {"default": "", 'isInput': True }),
                 "value2": ("STRING", {"default": "", 'isInput': True }),
             },
@@ -20,7 +19,8 @@ class Soze_CSVWriter:
                 "value7": ("STRING", {"default": ""}),
                 "value8": ("STRING", {"default": ""}),
                 "value9": ("STRING", {"default": ""}),
-                "value10": ("STRING", {"default": ""})
+                "value10": ("STRING", {"default": ""}),
+                
             }
         }
 
@@ -37,7 +37,7 @@ class Soze_CSVWriter:
     def wrap_quotes(self, value):
         return f'"{value}"'
 
-    def write_csv(self, csv_filename_path, write_line, value1="", value2="", value3="", value4="", value5="", value6="", value7="", value8="", value9="", value10=""):
+    def write_csv(self, csv_filename_path, value1="", value2="", value3="", value4="", value5="", value6="", value7="", value8="", value9="", value10=""):
         values = [value1, value2, value3, value4, value5, value6, value7, value8, value9, value10]
 
         # Filter out empty values
@@ -49,7 +49,7 @@ class Soze_CSVWriter:
         # Create a comma-separated line
         csv_line = ','.join(wrapped_values) + '\n'
         
-        if csv_filename_path.strip() != "" and write_line:
+        if csv_filename_path.strip() != "":
             # Ensure the directory exists
             os.makedirs(os.path.dirname(csv_filename_path), exist_ok=True)
             

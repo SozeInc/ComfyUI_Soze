@@ -15,6 +15,7 @@ from .py.images import Soze_LoadImage
 from .py.images import Soze_LoadImagesFromFolder
 from .py.images import Soze_BatchProcessSwitch
 from .py.images import Soze_LoadImageFromUrl
+from .py.images import Soze_GetImageColors
 from .py.csvreader import Soze_CSVReader
 from .py.csvwriter import Soze_CSVWriter
 from .py.xy import Soze_UnzippedProductAny
@@ -23,6 +24,8 @@ from .py.strings import (
     Soze_StringReplacer,
     Soze_MultilineConcatenateStrings,
     Soze_PromptCache,
+    Soze_TextContains,
+    Soze_TextContainsReturnString
     # Soze_IsInputInList
     )
 
@@ -61,6 +64,9 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Image List Loader": Soze_ImageListLoader,
                         "Variable Image Builder": Soze_VariableImageBuilder,
                         "Prompt Cache": Soze_PromptCache,
+                        "Text Contains (Return Bool)": Soze_TextContains,
+                        "Text Contains (Return String)": Soze_TextContainsReturnString,
+                        "Get Most Common Image Colors": Soze_GetImageColors,
                         # "Is Input In List": Soze_IsInputInList,
                         }
 
@@ -84,6 +90,9 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Image List Loader": "Image List Loader (Soze)",
                                 "Variable Image Builder": "Variable Image Builder (Soze)",
                                 "Prompt Cache": "Prompt Cache (Soze)",
+                                "Text Contains (Return Bool)": "Text Contains Return Bool (Soze)",
+                                "Text Contains (Return String)": "Text Contains Return String (Soze)",
+                                "Get Most Common Image Colors": "Get Most Common Image Colors (Soze)",
                                 # "Is Input In List": "Is Input In List (Soze)"
                                 
                               }
