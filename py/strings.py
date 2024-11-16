@@ -132,3 +132,68 @@ class Soze_PromptCache:
             
 
 
+class Soze_TextContainsReturnString:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"default": '', "multiline": False}),
+                "piped_sub_text": ("STRING", {"default": '', "multiline": False}),
+                "founnd_return_value": ("STRING", {"default": '', "multiline": False}),
+                "not_found_return_value": ("STRING", {"default": '', "multiline": False}),
+            },
+            "optional": {
+                "case_insensitive": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    FUNCTION = "text_contains"
+
+    CATEGORY = "strings"
+
+    def text_contains(self, text, piped_sub_text, case_insensitive,founnd_return_value,not_found_return_value):
+        # Split the sub_texts by the pipe character
+        sub_text_list = piped_sub_text.split('|')
+        
+        if case_insensitive:
+            text = text.lower()
+            sub_text_list = [sub_text.lower() for sub_text in sub_text_list]
+
+        # Check if any subtext is in the text
+        for sub_text in sub_text_list:
+            if sub_text in text:
+                return (founnd_return_value,)
+        
+        return (not_found_return_value,)
+
+class Soze_TextContains:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"default": '', "multiline": False}),
+                "sub_text": ("STRING", {"default": '', "multiline": False}),
+            },
+            "optional": {
+                "case_insensitive": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    RETURN_TYPES = ("BOOLEAN",)
+    FUNCTION = "text_contains"
+
+    CATEGORY = "strings"
+
+    def text_contains(self, text, sub_text, case_insensitive):
+        if case_insensitive:
+            sub_text = sub_text.lower()
+            text = text.lower()
+
+        return (sub_text in text,)

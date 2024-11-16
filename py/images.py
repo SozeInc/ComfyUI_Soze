@@ -5,10 +5,7 @@ import numpy as np
 import hashlib
 import re
 import requests
-import webcolors
-from colornamer import get_color_from_rgb
 from numpy import ndarray
-from sklearn.cluster import KMeans
 from collections import Counter
 
 from typing import Tuple, List, Dict, Any, Optional
@@ -960,7 +957,10 @@ class Soze_GetImageColors:
         # Create color strings and count them
         color_counts = {}
         for pixel in pixels:
-            r, g, b, a = pixel
+            if pixel.shape[0] == 3:  # RGB image
+                r, g, b = pixel
+            else:  # RGBA image
+                r, g, b, _ = pixel  # Ignore alpha channel
             rgb_str = f"rgb({r}, {g}, {b})"
             hex_str = f"#{r:02x}{g:02x}{b:02x}"
             
