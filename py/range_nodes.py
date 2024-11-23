@@ -247,3 +247,4 @@ class Soze_FloatNumStepsRangeNode:
             range_sizes.append(len(vals))
 
         return ranges, range_sizes
+

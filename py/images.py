@@ -6,13 +6,11 @@ import hashlib
 import re
 import requests
 from numpy import ndarray
-from collections import Counter
 
 from typing import Tuple, List, Dict, Any, Optional
 
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union, Optional, Callable, TYPE_CHECKING
-from sklearn.cluster import KMeans
 
 from PIL import ImageFont, ImageDraw, Image
 import matplotlib.font_manager as fm
@@ -943,7 +941,7 @@ class Soze_GetImageColors:
         input_image: torch.Tensor,
         num_colors: int = 5,
         exclude_colors: str = "",
-    ) -> Tuple[str, ...]:
+    ) -> tuple[str, ...]:
         # Process exclude colors
         if exclude_colors.strip():
             self.exclude = [color.strip().lower() for color in exclude_colors.strip().split(",")]
@@ -988,3 +986,6 @@ class Soze_GetImageColors:
             ", ".join(rgb_colors),
             ", ".join(hex_colors)
         )
+    
+
+    

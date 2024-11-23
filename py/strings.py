@@ -140,13 +140,14 @@ class Soze_TextContainsReturnString:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "text": ("STRING", {"default": '', "multiline": False}),
-                "piped_sub_text": ("STRING", {"default": '', "multiline": False}),
-                "founnd_return_value": ("STRING", {"default": '', "multiline": False}),
+                "find_text": ("STRING", {"default": '', "multiline": False}),
+                "piped_text_list": ("STRING", {"default": '', "multiline": False}),
+                "found_return_value": ("STRING", {"default": '', "multiline": False}),
                 "not_found_return_value": ("STRING", {"default": '', "multiline": False}),
             },
             "optional": {
-                "case_insensitive": ("BOOLEAN", {"default": True}),
+                "case_sensitive": ("BOOLEAN", {"default": False}),
+                "partial_match": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -155,18 +156,28 @@ class Soze_TextContainsReturnString:
 
     CATEGORY = "strings"
 
-    def text_contains(self, text, piped_sub_text, case_insensitive,founnd_return_value,not_found_return_value):
+    def text_contains(self, find_text, piped_text_list, case_sensitive,partial_match,found_return_value,not_found_return_value):
         # Split the sub_texts by the pipe character
-        sub_text_list = piped_sub_text.split('|')
-        
-        if case_insensitive:
-            text = text.lower()
-            sub_text_list = [sub_text.lower() for sub_text in sub_text_list]
+        text_list = piped_text_list.split('|')
+        found = False
+        original_find_text = find_text
 
-        # Check if any subtext is in the text
-        for sub_text in sub_text_list:
-            if sub_text in text:
-                return (founnd_return_value,)
+        if case_sensitive == False:
+            find_text = find_text.lower()
+            text_list = [entry.lower() for entry in text_list]
+
+        for entry in text_list:
+            if (partial_match):
+                if find_text in entry:
+                    found = True
+            else:
+                if find_text == entry:
+                    found = True
+        if found:
+            if (found_return_value != ''):
+                return (found_return_value,)
+            else:
+                return (original_find_text,)
         
         return (not_found_return_value,)
 
@@ -178,11 +189,11 @@ class Soze_TextContains:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "text": ("STRING", {"default": '', "multiline": False}),
-                "sub_text": ("STRING", {"default": '', "multiline": False}),
+                "find_text": ("STRING", {"default": '', "multiline": False}),
+                "search_text": ("STRING", {"default": '', "multiline": False}),
             },
             "optional": {
-                "case_insensitive": ("BOOLEAN", {"default": True}),
+                "case_sensitive": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -191,9 +202,9 @@ class Soze_TextContains:
 
     CATEGORY = "strings"
 
-    def text_contains(self, text, sub_text, case_insensitive):
-        if case_insensitive:
-            sub_text = sub_text.lower()
-            text = text.lower()
+    def text_contains(self, find_text, search_text, case_sensitive):
+        if case_sensitive == False:
+            search_text = search_text.lower()
+            find_text = find_text.lower()
 
-        return (sub_text in text,)
+        return (find_text in search_text,)
