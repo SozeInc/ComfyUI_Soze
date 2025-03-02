@@ -44,7 +44,8 @@ from .py.images import (
     Soze_XYImage,
     Soze_ImageListLoader,
     Soze_VariableImageBuilder,
-    Soze_AlphaCropAndPositionImage
+    Soze_AlphaCropAndPositionImage,
+    Soze_ShrinkImage
 )
 
 NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
@@ -73,6 +74,7 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Prompt X Lora": Soze_PromptXLora,
                         "Lora File Loader": Soze_LoraFileLoader,
                         "Alpha Crop and Position Image": Soze_AlphaCropAndPositionImage,
+                        "Shrink Image": Soze_ShrinkImage,
                         # "Is Input In List": Soze_IsInputInList,
                         }
 
@@ -102,6 +104,7 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Prompt X Lora": "Prompt X Lora (Soze)",
                                 "Lora File Loader": "Lora File Loader (Soze)",
                                 "Alpha Crop and Position Image": "Alpha Crop and Position Image (Soze)",
+                                "Shrink Image": "Shrink Image (Soze)",
                                 # "Is Input In List": "Is Input In List (Soze)"
                                 
                               }

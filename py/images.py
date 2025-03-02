@@ -1002,8 +1002,8 @@ class Soze_AlphaCropAndPositionImage:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
-    RETURN_NAMES = ("image", "mask")
+    RETURN_TYPES = ("IMAGE", "MASK", "WIDTH", "HEIGHT")
+    RETURN_NAMES = ("image", "mask", "int", "int")
 
     FUNCTION = "crop"
     CATEGORY = "image/processing"
@@ -1036,10 +1036,10 @@ class Soze_AlphaCropAndPositionImage:
                 continue
 
             # 添加padding并限制边界
-            ymin = max(0, ymin - left_padding)
-            ymax = min(height, ymax + right_padding)
-            xmin = max(0, xmin - top_padding)
-            xmax = min(width, xmax + bottom_padding)
+            ymin = max(0, ymin - right_padding)
+            ymax = min(height, ymax + left_padding)
+            xmin = max(0, xmin - bottom_padding)
+            xmax = min(width, xmax + top_padding)
 
             # 执行裁剪
             cropped = img[ymin:ymax, xmin:xmax, :4]  # 保留RGB通道
@@ -1048,7 +1048,8 @@ class Soze_AlphaCropAndPositionImage:
             cropped_images.append(cropped)
             cropped_masks.append(cropped_mask)
 
-        return cropped_images, cropped_masks
+        return cropped_images, cropped_masks, cropped[0].shape[1], cropped[0].shape[0]
+    
     def _find_boundary(self, arr):
         nz = torch.nonzero(arr)
         if nz.numel() == 0:
@@ -1056,7 +1057,7 @@ class Soze_AlphaCropAndPositionImage:
         return (nz[0].item(), nz[-1].item() + 1)
 
 
-class ShrinkImage:
+class Soze_ShrinkImage:
     def __init__(self):
         pass
 
