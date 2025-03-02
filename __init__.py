@@ -20,6 +20,7 @@ from .py.csvreader import Soze_CSVReader
 from .py.csvwriter import Soze_CSVWriter
 from .py.xy import Soze_UnzippedProductAny
 from .py.promptxlora import Soze_PromptXLora
+from .py.lorafileloader import Soze_LoraFileLoader
 
 from .py.strings import (
     Soze_StringReplacer,
@@ -43,6 +44,7 @@ from .py.images import (
     Soze_XYImage,
     Soze_ImageListLoader,
     Soze_VariableImageBuilder,
+    Soze_AlphaCropAndPositionImage
 )
 
 NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
@@ -69,6 +71,8 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Text Contains (Return String)": Soze_TextContainsReturnString,
                         "Get Most Common Image Colors": Soze_GetImageColors,
                         "Prompt X Lora": Soze_PromptXLora,
+                        "Lora File Loader": Soze_LoraFileLoader,
+                        "Alpha Crop and Position Image": Soze_AlphaCropAndPositionImage,
                         # "Is Input In List": Soze_IsInputInList,
                         }
 
@@ -96,6 +100,8 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Text Contains (Return String)": "List Contains Text Return String (Soze)",
                                 "Get Most Common Image Colors": "Get Most Common Image Colors (Soze)",
                                 "Prompt X Lora": "Prompt X Lora (Soze)",
+                                "Lora File Loader": "Lora File Loader (Soze)",
+                                "Alpha Crop and Position Image": "Alpha Crop and Position Image (Soze)",
                                 # "Is Input In List": "Is Input In List (Soze)"
                                 
                               }

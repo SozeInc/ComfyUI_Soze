@@ -16,8 +16,8 @@ class Soze_CSVReader:
             }
         }
 
-    RETURN_NAMES = ('Column_1', 'Column_2', 'Column_3', 'Column_4', 'Column_5', 'Column_6', 'Column_7', 'Column_8', 'Column_9', 'Column_10', 'Row_Count')
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT")
+    RETURN_NAMES = ('Column_1', 'Column_2', 'Column_3', 'Column_4', 'Column_5', 'Column_6', 'Column_7', 'Column_8', 'Column_9', 'Column_10', 'Entire_Line', 'Row_Count')
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT")
     FUNCTION = "read_csv"
     CATEGORY = "utils"
     OUTPUT_NODE = True
@@ -59,4 +59,5 @@ class Soze_CSVReader:
         # Strip quotes from each value in the row
         stripped_row = [self.strip_quotes(value) for value in row]
         output = stripped_row[:10] + [""] * (10 - len(stripped_row))
-        return tuple(output + [row_count])
+        entire_line = ",".join(stripped_row)
+        return tuple(output + [entire_line, row_count])

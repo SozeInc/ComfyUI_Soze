@@ -54,11 +54,8 @@ class Soze_StringReplacer:
 
     def replace_characters(self, input_string, replace_with, replace_chars, strip_newlines, max_length):
         if replace_chars.strip() != '':
-            # Split the replace_chars string into a list
-            chars_to_replace = replace_chars.split(',')
-            
-            # Create a regular expression pattern
-            pattern = '[' + re.escape(''.join(chars_to_replace)) + ']'
+            # Create a regular expression pattern from each character in replace_chars
+            pattern = '[' + re.escape(replace_chars) + ']'
             
             # Perform the replacement
             result = re.sub(pattern, replace_with, input_string)

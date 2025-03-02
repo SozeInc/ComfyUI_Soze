@@ -23,8 +23,8 @@ class Soze_PromptXLora:
             "restart_loop": ("BOOLEAN", {"default": False}),    
         }}
 
-    RETURN_TYPES = ("INT","INT", "INT","INT", "STRING", "STRING")
-    RETURN_NAMES = ("prompts_count", "loras_count", "current_prompt_index", "current_lora_index", "prompt_text", "lora_filepath")
+    RETURN_TYPES = ("INT","INT", "INT","INT", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("prompts_count", "loras_count", "current_prompt_index", "current_lora_index", "prompt_text", "lora_filepath", "lora_filename")
     FUNCTION = "promptxlora"
     CATEGORY = "util"
     
@@ -32,6 +32,7 @@ class Soze_PromptXLora:
         prompts_count = len(prompts.splitlines()) 
         loras_count = len(glob.glob(os.path.join(lora_dir, '*.' + lora_extension)))
         loras_list = glob.glob(os.path.join(lora_dir, '*.' + lora_extension))
+        loras_list.sort()
         lora_filepath = ""
         if (restart_loop):
             self.prompt_index = -1
@@ -55,9 +56,10 @@ class Soze_PromptXLora:
                 
         prompt_text = prompts.splitlines()[self.prompt_index]
         lora_filepath = loras_list[self.lora_index] 
+        lora_filename = os.path.basename(lora_filepath)
 
         return {"ui": {
-            "text": [f"{prompts_count}|{loras_count}|{self.prompt_index}|{self.lora_index}"],}, 
-            "result": (prompts_count, loras_count, self.prompt_index, self.lora_index, prompt_text, lora_filepath) 
+            "text": [f"{prompts_count}|{loras_count}|{self.prompt_index + 1}|{self.lora_index + 1}"],}, 
+            "result": (prompts_count, loras_count, self.prompt_index, self.lora_index, prompt_text, lora_filepath, lora_filename) 
         }
     
