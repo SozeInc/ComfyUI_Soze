@@ -1,5 +1,5 @@
 torch
 Pillow
 numpy
-collections
+collection
 matplotlib
