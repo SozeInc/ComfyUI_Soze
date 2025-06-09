@@ -11,12 +11,8 @@ import sys
 import traceback
 
 from .py.outputfilename import Soze_OutputFilename
-from .py.images import Soze_LoadImage
-from .py.images import Soze_LoadImagesFromFolder
-from .py.images import Soze_BatchProcessSwitch
-from .py.images import Soze_LoadImageFromUrl
-from .py.images import Soze_GetImageColors
-from .py.csvreader import Soze_CSVReader
+from .py.images import Soze_LoadImage, Soze_LoadImagesFromFolder, Soze_BatchProcessSwitch, Soze_LoadImageFromUrl, Soze_GetImageColors,  Soze_PadMask
+from .py.csvreader import Soze_CSVReader, Soze_CSVReaderXCheckpoint
 from .py.csvwriter import Soze_CSVWriter
 from .py.xy import Soze_UnzippedProductAny
 from .py.promptxlora import Soze_PromptXLora
@@ -27,7 +23,7 @@ from .py.strings import (
     Soze_MultilineConcatenateStrings,
     Soze_PromptCache,
     Soze_TextContains,
-    Soze_TextContainsReturnString
+    Soze_TextContainsReturnString,
     # Soze_IsInputInList
     )
 
@@ -54,6 +50,7 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Image Batch Process Switch": Soze_BatchProcessSwitch,
                         "Load Image From URL": Soze_LoadImageFromUrl,
                         "CSV Reader": Soze_CSVReader,
+                        "CSV Reader X Checkpoint": Soze_CSVReaderXCheckpoint,
                         "CSV Writer": Soze_CSVWriter,
                         "String Replacer": Soze_StringReplacer,
                         "Multiline Concatenate Strings": Soze_MultilineConcatenateStrings,
@@ -75,6 +72,7 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Lora File Loader": Soze_LoraFileLoader,
                         "Alpha Crop and Position Image": Soze_AlphaCropAndPositionImage,
                         "Shrink Image": Soze_ShrinkImage,
+                        "Pad Mask": Soze_PadMask,
                         # "Is Input In List": Soze_IsInputInList,
                         }
 
@@ -105,6 +103,8 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Lora File Loader": "Lora File Loader (Soze)",
                                 "Alpha Crop and Position Image": "Alpha Crop and Position Image (Soze)",
                                 "Shrink Image": "Shrink Image (Soze)",
+                                "Pad Mask": "Pad Mask (Soze)",
+                                "CSV Reader X Checkpoint": "CSV Reader X Checkpoint (Soze)",
                                 # "Is Input In List": "Is Input In List (Soze)"
                                 
                               }

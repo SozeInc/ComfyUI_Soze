@@ -1004,8 +1004,8 @@ class Soze_AlphaCropAndPositionImage:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
-    RETURN_NAMES = ("image", "mask", "width", "height")
+    RETURN_TYPES = ("IMAGE", "INT", "INT")
+    RETURN_NAMES = ("image", "width", "height")
 
     FUNCTION = "crop"
     CATEGORY = "image/processing"
@@ -1013,7 +1013,6 @@ class Soze_AlphaCropAndPositionImage:
     def crop(self, image, maintain_aspect, left_padding: int = 0, right_padding: int = 0, top_padding: int = 0, bottom_padding: int = 0):
         cropped_images = []
         cropped_masks = []
-        alpha_images = []
 
         for img in image:
             alpha = img[..., 3]
@@ -1031,20 +1030,14 @@ class Soze_AlphaCropAndPositionImage:
             if ymin is None or xmin is None:
                 cropped_images.append(img)
                 cropped_masks.append(torch.zeros_like(alpha))
-                alpha_images.append(img)
                 continue
-
-            ymin = max(0, ymin - top_padding)
-            ymax = min(height, ymax + bottom_padding)
-            xmin = max(0, xmin - left_padding)
-            xmax = min(width, xmax + right_padding)
 
             cropped = img[ymin:ymax, xmin:xmax, :4]
             cropped_mask = alpha[ymin:ymax, xmin:xmax]
 
             # Apply padding to the cropped image
-            padded_height = ymax - ymin + top_padding + bottom_padding
-            padded_width = xmax - xmin + left_padding + right_padding
+            padded_height = (ymax - ymin) + top_padding + bottom_padding
+            padded_width = (xmax - xmin) + left_padding + right_padding
 
             if maintain_aspect == "True":
                 if padded_height > padded_width:
@@ -1064,10 +1057,10 @@ class Soze_AlphaCropAndPositionImage:
             padded_mask = torch.zeros((padded_height, padded_width), dtype=alpha.dtype)
             padded_mask[top_padding:top_padding + (ymax - ymin), left_padding:left_padding + (xmax - xmin)] = cropped_mask
 
+            cropped_images.append(padded_image)
             cropped_masks.append(padded_mask)
-            alpha_images.append(padded_image)
 
-        return alpha_images, cropped_masks, xmax - xmin + left_padding + right_padding, ymax - ymin + top_padding + bottom_padding
+        return cropped_images, cropped_masks, padded_width, padded_height
     
     def _find_boundary(self, arr):
         nz = torch.nonzero(arr)
@@ -1146,3 +1139,62 @@ class Soze_ShrinkImage:
             output_images.append(resized_img_np)
 
         return (output_images,)
+    
+
+class Soze_PadMask:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mask": ("MASK",),
+                "top_padding": ("INT", {"default": 0, "min": 0}),
+                "bottom_padding": ("INT", {"default": 0, "min": 0}),
+                "left_padding": ("INT", {"default": 0, "min": 0}),
+                "right_padding": ("INT", {"default": 0, "min": 0}),
+            }
+        }
+
+    RETURN_TYPES = ("MASK",)
+    RETURN_NAMES = ("mask",)
+    FUNCTION = "pad_mask"
+    CATEGORY = "image/processing"
+
+    def pad_mask(self, mask, top_padding, bottom_padding, left_padding, right_padding):
+        # Get the original mask dimensions
+        original_height, original_width = mask.shape[-2:]
+
+        # Ensure the new dimensions do not exceed the original mask area
+        max_top_bottom_padding = original_height // 2
+        max_left_right_padding = original_width // 2
+
+        top_padding = min(top_padding, max_top_bottom_padding)
+        bottom_padding = min(bottom_padding, max_top_bottom_padding)
+        left_padding = min(left_padding, max_left_right_padding)
+        right_padding = min(right_padding, max_left_right_padding)
+
+        # Calculate the new dimensions
+        new_height = original_height + top_padding + bottom_padding
+        new_width = original_width + left_padding + right_padding
+
+        # Ensure the new dimensions are valid
+        if new_height <= 0 or new_width <= 0:
+            raise ValueError("Invalid padding values resulting in non-positive dimensions.")
+
+        # Create a new mask filled with zeros (same dtype and device as the original mask)
+        padded_mask = torch.zeros((new_height, new_width), dtype=mask.dtype, device=mask.device)
+
+        # Calculate the placement indices for the original mask
+        start_y = top_padding
+        end_y = start_y + original_height
+        start_x = left_padding
+        end_x = start_x + original_width
+
+        # Ensure indices are within bounds
+        if end_y > new_height or end_x > new_width:
+            raise ValueError("Padding values result in out-of-bounds placement of the original mask.")
+
+        # Place the original mask in the center of the new mask
+        padded_mask[start_y:end_y, start_x:end_x] = mask
+
+        return padded_mask
+
