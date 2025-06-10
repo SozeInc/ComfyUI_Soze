@@ -3,6 +3,9 @@ import csv
 import os
 import random
 import folder_paths
+import comfy.utils
+
+from comfy import model_management
 
 class Soze_CSVReader:
     @classmethod
@@ -24,7 +27,7 @@ class Soze_CSVReader:
     OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(self, csv_filename_path, csv_text, seed):
+    def IS_CHANGED(self):
         return time.time()    
     
     def strip_quotes(self, value):
@@ -79,14 +82,14 @@ class Soze_CSVReaderXCheckpoint:
             }
         }
 
-    RETURN_NAMES = ('Column_1', 'Column_2', 'Column_3', 'Column_4', 'Column_5', 'Column_6', 'Column_7', 'Column_8', 'Column_9', 'Column_10', 'Entire_Line', 'Row_Count', "Ckpt_Name", "Cktp_Index")
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT", "STRING", "INT")
+    RETURN_NAMES = ('Column_1', 'Column_2', 'Column_3', 'Column_4', 'Column_5', 'Column_6', 'Column_7', 'Column_8', 'Column_9', 'Column_10', 'Entire_Line', 'Row_Count', "Ckpt_Full_Path", "Ckpt_Name_Only", "Cktp_Index")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT", "STRING", "STRING", "INT")
     FUNCTION = "process"
     CATEGORY = "utils"
     OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(self):
+    def IS_CHANGED(self, csv_filename_path, index, start_ckpt_name, ckpt_count):
         return time.time()    
     
     def strip_quotes(self, value):
@@ -137,5 +140,9 @@ class Soze_CSVReaderXCheckpoint:
         output = stripped_row[:10] + [""] * (10 - len(stripped_row))
         entire_line = ",".join(stripped_row)
 
-        return tuple(output + [entire_line, row_count] + [ckpt_list[ckpt_index], ckpt_index + 1])
+        ckpt_full_path = folder_paths.get_full_path_or_raise("checkpoints", ckpt_list[ckpt_index])
+        
+        ckpt_name_only = os.path.basename(ckpt_list[ckpt_index])
+
+        return tuple(output + [entire_line, row_count] + [ckpt_full_path, ckpt_name_only, ckpt_index + 1])
 

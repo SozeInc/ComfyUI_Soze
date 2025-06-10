@@ -17,6 +17,7 @@ from .py.csvwriter import Soze_CSVWriter
 from .py.xy import Soze_UnzippedProductAny
 from .py.promptxlora import Soze_PromptXLora
 from .py.lorafileloader import Soze_LoraFileLoader
+from .py.ckptfileloader import Soze_CheckpointFilePathLoader
 
 from .py.strings import (
     Soze_StringReplacer,
@@ -73,6 +74,7 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Alpha Crop and Position Image": Soze_AlphaCropAndPositionImage,
                         "Shrink Image": Soze_ShrinkImage,
                         "Pad Mask": Soze_PadMask,
+                        "Checkpoint File Loader": Soze_CheckpointFilePathLoader,
                         # "Is Input In List": Soze_IsInputInList,
                         }
 
@@ -105,6 +107,7 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Shrink Image": "Shrink Image (Soze)",
                                 "Pad Mask": "Pad Mask (Soze)",
                                 "CSV Reader X Checkpoint": "CSV Reader X Checkpoint (Soze)",
+                                "Checkpoint File Loader": "Checkpoint File Loader (Soze)",
                                 # "Is Input In List": "Is Input In List (Soze)"
                                 
                               }
