@@ -1060,7 +1060,7 @@ class Soze_AlphaCropAndPositionImage:
             cropped_images.append(padded_image)
             cropped_masks.append(padded_mask)
 
-        return cropped_images, cropped_masks, padded_width, padded_height
+        return cropped_images, padded_width, padded_height
     
     def _find_boundary(self, arr):
         nz = torch.nonzero(arr)
