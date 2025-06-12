@@ -151,7 +151,7 @@ class Soze_LoadImagesFromFolder:
 
     CATEGORY = "image"
 
-    def load_images(self, Input_Folder, Image_Load_Count, seed):
+    def load_images(self, Input_Folder, Image_Load_Count, index):
         if not os.path.isdir(Input_Folder):
             raise FileNotFoundError(f"Folder not found: {Input_Folder}")
         dir_files = os.listdir(Input_Folder)
@@ -166,7 +166,7 @@ class Soze_LoadImagesFromFolder:
         dir_files = [os.path.join(Input_Folder, x) for x in dir_files]
 
         # start at start_index
-        dir_files = dir_files[seed:]
+        dir_files = dir_files[index:]
 
         images = []
         masks = []
