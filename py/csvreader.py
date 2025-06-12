@@ -114,9 +114,8 @@ class Soze_CSVReaderXCheckpoint:
                 raise  # Re-raise the FileNotFoundError
             except Exception as e:
                 print(f"Error reading CSV: {str(e)}")
-                return tuple([""] * 10 + [0])
-        else:
-            return tuple([""] * 10 + [0])
+                raise ValueError(f"Error reading CSV file: {str(e)}")
+                
 
         csv_reader = csv.reader(csv_data)
         rows = list(csv_reader)
