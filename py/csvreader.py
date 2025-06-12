@@ -13,7 +13,8 @@ class Soze_CSVReader:
         return {
             "required": {
                 "csv_filename_path": ("STRING", {"default": "","multiline": True}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 1000000, "step": 1})
+                "index": ("INT", {"default": 0, "min": 0, "max": 1000000, "control_after_generate": True, "step": 1}),
+
             },
             "optional": {
                 "csv_text": ("STRING", {"default": "","multiline": True})

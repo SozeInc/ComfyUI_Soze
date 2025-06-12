@@ -141,7 +141,7 @@ class Soze_LoadImagesFromFolder:
             },
             "optional": {
                 "Image_Load_Count": ("INT", {"default": 1, "min": 0, "step": 1}),
-                "seed": ("INT", {"default": 0, "min": 0, "step": 1}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 1000000, "control_after_generate": True, "step": 1}),
             }
         }
 
