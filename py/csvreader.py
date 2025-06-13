@@ -34,7 +34,7 @@ class Soze_CSVReader:
     def strip_quotes(self, value):
         return value.strip('"')
 
-    def read_csv(self, csv_filename_path, csv_text, seed):
+    def read_csv(self, csv_filename_path, csv_text, index):
         if csv_text.strip() != '':
             csv_data = csv_text.splitlines()
         else:
@@ -57,10 +57,10 @@ class Soze_CSVReader:
         rows = list(csv_reader)
         row_count = len(rows)
         
-        if seed >= row_count:
+        if index >= row_count:
             raise ValueError(f"There are no more rows in the CSV file ({row_count})")
         
-        row = rows[seed]
+        row = rows[index]
         # Strip quotes from each value in the row
         stripped_row = [self.strip_quotes(value) for value in row]
         output = stripped_row[:10] + [""] * (10 - len(stripped_row))

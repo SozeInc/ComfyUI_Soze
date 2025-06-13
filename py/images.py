@@ -359,11 +359,11 @@ class Soze_ImageLabelOverlay:
     RETURN_NAMES = ("Images",)
     INPUT_IS_LIST = (True,)
     OUTPUT_IS_LIST = (True,)
-    FUNCTION = "put_overlay"
+    FUNCTION = "process"
 
     CATEGORY = "image"
 
-    def put_overlay(
+    def process(
             self,
             images: List[Tensor],
             float_labels: Optional[List[float]] = None,
