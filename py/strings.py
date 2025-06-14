@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import re
 
 from .utils import (
@@ -34,13 +35,13 @@ from .utils import (
 #         # Return unmatched_value if no match is found
 #         return unmatched_value
     
-class Soze_StringReplacer:
+class Soze_SpecialCharacterReplacer:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "input_string": ("STRING", {"forceInput": True,"multiline": True}),
-                "replace_chars": ("STRING", {"default": '",-,;,:,/,\,|,<,>,?,{,},[,],(,),=,+,*,^,&,%,#,!,~,`,.', "multiline": True}),
+                "replace_chars": ("STRING", {"default": '"-;:/\|<>?}{[]()=+*^&%#!~`._,\' @$', "multiline": True}),
                 "replace_with": ("STRING", {"default": ""}),
                 "strip_newlines": ("BOOLEAN", {"default": True}),
                 "max_length": ("INT", {"default": 0, "min": 0, "max": 1000000, "step": 1})
@@ -53,19 +54,13 @@ class Soze_StringReplacer:
     CATEGORY = "strings"
 
     def replace_characters(self, input_string, replace_with, replace_chars, strip_newlines, max_length):
-        if replace_chars.strip() != '':
-            # Create a regular expression pattern from each character in replace_chars
-            pattern = '[' + re.escape(replace_chars) + ']'
-            
-            # Perform the replacement
-            result = re.sub(pattern, replace_with, input_string)
-        else:
-            result = input_string
-
-        # Strip newlines if requested
+        if input_string is None:
+            return ("",)
+        result = input_string
+        for char in replace_chars:
+            result = result.replace(char, replace_with)
         if strip_newlines:
             result = result.replace('\n', '').replace('\r', '')
-
         if max_length > 0:
             return (result[:max_length],)
         else:
