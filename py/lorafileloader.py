@@ -3,7 +3,7 @@ import folder_paths
 import comfy.utils
 
 
-class Soze_LoraFileLoader:
+class Soze_LoraFilePathLoader:
     def __init__(self):
         self.loaded_lora = None
 

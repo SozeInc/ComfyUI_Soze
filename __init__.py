@@ -12,12 +12,13 @@ import traceback
 
 from .py.outputfilename import Soze_OutputFilename
 from .py.images import Soze_LoadImage, Soze_LoadImagesFromFolder, Soze_BatchProcessSwitch, Soze_LoadImageFromUrl, Soze_GetImageColors,  Soze_PadMask
-from .py.csvreader import Soze_CSVReader, Soze_CSVReaderXCheckpoint
+from .py.csvreader import Soze_CSVReader, Soze_CSVReaderXCheckpoint, Soze_CSVReaderXLora
 from .py.csvwriter import Soze_CSVWriter
 from .py.xy import Soze_UnzippedProductAny
-from .py.promptxlora import Soze_PromptXLora
-from .py.lorafileloader import Soze_LoraFileLoader
+#from .py.promptxlora import Soze_PromptXLora
+from .py.lorafileloader import Soze_LoraFilePathLoader
 from .py.ckptfileloader import Soze_CheckpointFilePathLoader
+#from .py.comfydeploy import Soze_ComfyDeployAPINode
 
 from .py.strings import (
     Soze_SpecialCharacterReplacer,
@@ -69,12 +70,13 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Text Contains (Return Bool)": Soze_TextContains,
                         "Text Contains (Return String)": Soze_TextContainsReturnString,
                         "Get Most Common Image Colors": Soze_GetImageColors,
-                        "Prompt X Lora": Soze_PromptXLora,
-                        "Lora File Loader": Soze_LoraFileLoader,
+                        "Lora File Loader": Soze_LoraFilePathLoader,
                         "Alpha Crop and Position Image": Soze_AlphaCropAndPositionImage,
                         "Shrink Image": Soze_ShrinkImage,
                         "Pad Mask": Soze_PadMask,
                         "Checkpoint File Loader": Soze_CheckpointFilePathLoader,
+                        "CSV Reader X Lora": Soze_CSVReaderXLora,
+                        #"ComfyDeploy API Node Image-Prompt 2 Image": Soze_ComfyDeployAPINode,
                         # "Is Input In List": Soze_IsInputInList,
                         }
 
@@ -108,6 +110,8 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Pad Mask": "Pad Mask (Soze)",
                                 "CSV Reader X Checkpoint": "CSV Reader X Checkpoint (Soze)",
                                 "Checkpoint File Loader": "Checkpoint File Loader (Soze)",
+                                "CSV Reader X Lora": "CSV Reader X Lora (Soze)",
+                                # "ComfyDeploy API Node Image-Prompt 2 Image": "ComfyDeploy API Node - Image-Prompt 2 Image (Soze)",
                                 # "Is Input In List": "Is Input In List (Soze)"
                                 
                               }

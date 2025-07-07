@@ -146,3 +146,81 @@ class Soze_CSVReaderXCheckpoint:
 
         return tuple(output + [entire_line, row_count] + [ckpt_full_path, ckpt_name_only, ckpt_index + 1])
 
+
+
+class Soze_CSVReaderXLora:
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "csv_filename_path": ("STRING", {"default": "","multiline": True}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 1000000, "control_after_generate": True, "step": 1, "tooltip": "The row number to read from the CSV file."}),
+                "start_lora_name": (folder_paths.get_filename_list("loras"), {"tooltip": "The name of the starting LoRA."}),
+                "lora_count": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1, "tooltip": "The number of LoRAs to load."})
+            }
+        }
+
+    RETURN_NAMES = ('Column_1', 'Column_2', 'Column_3', 'Column_4', 'Column_5', 'Column_6', 'Column_7', 'Column_8', 'Column_9', 'Column_10', 'Entire_Line', 'Row_Count', "Lora_Full_Path", "Lora_Name_Only", "Lora_Index")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT", "STRING", "STRING", "INT")
+    FUNCTION = "process"
+    CATEGORY = "utils"
+    OUTPUT_NODE = True
+
+    @classmethod
+    def IS_CHANGED(self):
+        return time.time()    
+    
+    def strip_quotes(self, value):
+        return value.strip('"')
+
+    def process(self, csv_filename_path, index, start_lora_name, lora_count):
+        lora_list = folder_paths.get_filename_list("loras")
+        
+        if csv_filename_path.strip() == "":
+            raise ValueError("CSV filename path cannot be empty.")
+
+        if csv_filename_path.strip() != "":
+            csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename_path.strip())
+
+            if not os.path.exists(csv_path):
+                raise FileNotFoundError(f"CSV file not found: {csv_path}")
+            try:
+                with open(csv_path, 'r', newline='') as csvfile:
+                    csv_data = csvfile.readlines()
+            except FileNotFoundError:
+                raise  # Re-raise the FileNotFoundError
+            except Exception as e:
+                print(f"Error reading CSV: {str(e)}")
+                raise ValueError(f"Error reading CSV file: {str(e)}")
+                
+
+        csv_reader = csv.reader(csv_data)
+        rows = list(csv_reader)
+        row_count = len(rows)
+        
+        try:
+            start_lora_index = lora_list.index(start_lora_name)
+        except ValueError:
+            raise ValueError(f"Lora '{start_lora_name}' not found in lora list.")
+        
+        csv_index = index % row_count
+        lora_index = start_lora_index + (index // row_count)
+
+        if lora_index >= len(lora_list):
+            raise ValueError(f"There are no more lora in the list ({len(lora_list)})")
+        elif lora_index >= (start_lora_index + lora_count):
+            raise ValueError(f"Index {index} has completed the iteration of rows {row_count} against each lora indicated {lora_count}.")
+        
+        row = rows[csv_index]
+        # Strip quotes from each value in the row
+        stripped_row = [self.strip_quotes(value) for value in row]
+        output = stripped_row[:10] + [""] * (10 - len(stripped_row))
+        entire_line = ",".join(stripped_row)
+
+        lora_full_path = folder_paths.get_full_path_or_raise("loras", lora_list[lora_index])
+        
+        lora_name_only = os.path.basename(lora_list[lora_index])
+
+        return tuple(output + [entire_line, row_count] + [lora_full_path, lora_name_only, lora_index + 1])
+
