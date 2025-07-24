@@ -130,6 +130,12 @@ class Soze_LoadImage:
 
         return True
     
+    def read_previous_image_filename():
+        try:
+            return read_from_file('sozeimagecache.txt')
+        except Exception:
+            return ""
+    
 # Code from https://github.com/kijai/ComfyUI-KJNodes 
 # Added filename outputs etc
 class Soze_LoadImagesFromFolder:
