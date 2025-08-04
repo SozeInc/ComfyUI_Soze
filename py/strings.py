@@ -200,3 +200,27 @@ class Soze_TextContains:
             find_text = find_text.lower()
 
         return (find_text in search_text,)
+
+
+
+class Soze_IsStringEmpty:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_text": ("STRING", {"default": '', "multiline": False}),
+            }
+        }
+
+    RETURN_TYPES = ("BOOLEAN",)
+    FUNCTION = "text_empty"
+
+    CATEGORY = "strings"
+
+    def text_empty(self, input_text):
+        if input_text is None:
+            return (True,)
+        return (input_text.strip() == "",)
