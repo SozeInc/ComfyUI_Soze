@@ -183,61 +183,81 @@ class Soze_LoadImagesFromFolder:
             limit_images = True
         image_count = 0
 
-        has_non_empty_mask = False
+        excluded_formats = ['MPO']
 
         for image_path in dir_files:
-            if os.path.isdir(image_path) and os.path.ex:
+            if os.path.isdir(image_path):
                 continue
             if limit_images and image_count >= Image_Load_Count:
                 break
-            i = Image.open(image_path)
-            i = ImageOps.exif_transpose(i)
-            image = i.convert("RGB")
-            image = np.array(image).astype(np.float32) / 255.0
-            image = torch.from_numpy(image)[None,]
-            if 'A' in i.getbands():
-                mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
-                mask = 1. - torch.from_numpy(mask)
-                has_non_empty_mask = True
+
+            input_filepath = folder_paths.get_annotated_filepath(image_path)
+            input_filename = os.path.basename(input_filepath)
+            input_filename_no_ext = os.path.splitext(input_filename)[0]
+
+            img = node_helpers.pillow(Image.open, input_filepath)
+
+            output_images = []
+            output_masks = []
+            w, h = None, None
+
+            for i in ImageSequence.Iterator(img):
+                i = node_helpers.pillow(ImageOps.exif_transpose, i)
+
+                if i.mode == 'I':
+                    i = i.point(lambda i: i * (1 / 255))
+                image = i.convert("RGB")
+
+                if len(output_images) == 0:
+                    w = image.size[0]
+                    h = image.size[1]
+
+                if image.size[0] != w or image.size[1] != h:
+                    continue
+
+                image = np.array(image).astype(np.float32) / 255.0
+                image = torch.from_numpy(image)[None,]
+                if 'A' in i.getbands():
+                    mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+                    mask = 1. - torch.from_numpy(mask)
+                else:
+                    mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+                output_images.append(image)
+                output_masks.append(mask.unsqueeze(0))
+
+            if len(output_images) > 1 and img.format not in excluded_formats:
+                output_image = torch.cat(output_images, dim=0)
+                output_mask = torch.cat(output_masks, dim=0)
             else:
-                mask = torch.zeros((64, 64), dtype=torch.float32, device="cpu")
-            images.append(image)
-            masks.append(mask)
-            image_path_list.append(image_path)
+                output_image = output_images[0]
+                output_mask = output_masks[0]
+
+            images.append(output_image)
+            masks.append(output_mask)
+            image_path_list.append(input_filepath)
             image_count += 1
 
         if len(images) == 1:
-
-            input_filenamepath = folder_paths.get_annotated_filepath(image_path_list[0])
+            input_filenamepath = image_path_list[0]
             input_filename = os.path.basename(input_filenamepath)
             input_filename_no_ext = os.path.splitext(input_filename)[0]
             return (images[0], masks[0], 1, Input_Folder, input_filenamepath, input_filename, input_filename_no_ext)
 
         elif len(images) > 1:
             image1 = images[0]
-            mask1 = None
-
+            mask1 = masks[0]
             for image2 in images[1:]:
                 if image1.shape[1:] != image2.shape[1:]:
                     image2 = common_upscale(image2.movedim(-1, 1), image1.shape[2], image1.shape[1], "bilinear", "center").movedim(1, -1)
                 image1 = torch.cat((image1, image2), dim=0)
 
             for mask2 in masks[1:]:
-                if has_non_empty_mask:
-                    if image1.shape[1:3] != mask2.shape:
-                        mask2 = torch.nn.functional.interpolate(mask2.unsqueeze(0).unsqueeze(0), size=(image1.shape[2], image1.shape[1]), mode='bilinear', align_corners=False)
-                        mask2 = mask2.squeeze(0)
-                    else:
-                        mask2 = mask2.unsqueeze(0)
-                else:
-                    mask2 = mask2.unsqueeze(0)
+                if mask1.shape != mask2.shape:
+                    mask2 = torch.nn.functional.interpolate(mask2.unsqueeze(0).unsqueeze(0), size=(mask1.shape[-2], mask1.shape[-1]), mode='bilinear', align_corners=False)
+                    mask2 = mask2.squeeze(0)
+                mask1 = torch.cat((mask1, mask2), dim=0)
 
-                if mask1 is None:
-                    mask1 = mask2
-                else:
-                    mask1 = torch.cat((mask1, mask2), dim=0)
-
-            input_filenamepath = folder_paths.get_annotated_filepath(image_path_list[0])
+            input_filenamepath = image_path_list[0]
             input_filename = os.path.basename(input_filenamepath)
             input_filename_no_ext = os.path.splitext(input_filename)[0]
 
@@ -871,7 +891,7 @@ class Soze_ImageListLoader:
 
     @staticmethod
     def numerical_sort(file_name: Path) -> int:
-        subbed = re.sub("\D", "", str(file_name))
+        subbed = re.sub(r"\D", "", str(file_name))
         if subbed == "":
             return 0
         return int(subbed)
