@@ -18,7 +18,8 @@ from .py.xy import Soze_UnzippedProductAny
 #from .py.promptxlora import Soze_PromptXLora
 from .py.lorafileloader import Soze_LoraFilePathLoader
 from .py.ckptfileloader import Soze_CheckpointFilePathLoader
-#from .py.comfydeploy import Soze_ComfyDeployAPINode
+from .py.comfydeploy import Soze_ComfyDeployAPINode
+from .py.elevenlabs import Soze_ElevenLabsVoiceRetrieverNode
 
 from .py.strings import (
     Soze_SpecialCharacterReplacer,
@@ -26,6 +27,7 @@ from .py.strings import (
     Soze_PromptCache,
     Soze_TextContains,
     Soze_TextContainsReturnString,
+    Soze_IsStringEmpty
     # Soze_IsInputInList
     )
 
@@ -76,7 +78,9 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Pad Mask": Soze_PadMask,
                         "Checkpoint File Loader": Soze_CheckpointFilePathLoader,
                         "CSV Reader X Lora": Soze_CSVReaderXLora,
-                        #"ComfyDeploy API Node Image-Prompt 2 Image": Soze_ComfyDeployAPINode,
+                        "ComfyDeploy API Node": Soze_ComfyDeployAPINode,
+                        "Is String Empty": Soze_IsStringEmpty,
+                        "ElevenLabs Voice Retriever": Soze_ElevenLabsVoiceRetrieverNode,
                         # "Is Input In List": Soze_IsInputInList,
                         }
 
@@ -111,7 +115,9 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "CSV Reader X Checkpoint": "CSV Reader X Checkpoint (Soze)",
                                 "Checkpoint File Loader": "Checkpoint File Loader (Soze)",
                                 "CSV Reader X Lora": "CSV Reader X Lora (Soze)",
-                                # "ComfyDeploy API Node Image-Prompt 2 Image": "ComfyDeploy API Node - Image-Prompt 2 Image (Soze)",
+                                "ComfyDeploy API Node": "ComfyDeploy API Node (Soze)",
+                                "Is String Empty": "Is String Empty (Soze)",
+                                "ElevenLabs Voice Retriever": "ElevenLabs Voice Retriever (Soze)",
                                 # "Is Input In List": "Is Input In List (Soze)"
                                 
                               }
