@@ -60,17 +60,6 @@ def upload_to_azure_storage(image):
     url = f"https://{storage_account}.blob.core.windows.net/{container_name}/{blob_name}"
     return url    
 
-def load_api_key_from_env():
-    # Get the parent directory of the current file
-    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-    if not os.path.exists(env_path):
-        raise Exception(f".env file not found at {env_path}")
-    with open(env_path, "r") as f:
-        for line in f:
-            if line.strip().startswith("CD_API_KEY="):
-                return line.strip().split("=", 1)[1]
-    raise Exception("CD_API_KEY not found in .env file in the nodes root directory")
-
 class Soze_ComfyDeployAPINode:
     @classmethod
     def INPUT_TYPES(cls):
@@ -498,3 +487,13 @@ class Soze_ComfyDeployAPIImageParameters:
         param_string = ";".join(params)
 
         return (param_string,)
+
+def load_api_key_from_env():
+    """
+    Loads the API key from the CD_API_KEY environment variable.
+    Raises an exception if not found.
+    """
+    api_key = os.getenv("CD_API_KEY")
+    if not api_key:
+        raise EnvironmentError("CD_API_KEY environment variable not set.")
+    return api_key
