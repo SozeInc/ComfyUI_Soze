@@ -109,19 +109,14 @@ class Soze_ComfyDeployAPIStringParameters:
         return {
             "optional": {
                 "more_parameters": ("STRING", {"default": "", "forceInput": True}),
-                "use_param_1": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_1": ("STRING", {"default": "", "isInput": False}),
                 "string_value_1": ("STRING", {"default": "", "isInput": False}),
-                "use_param_2": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_2": ("STRING", {"default": "", "isInput": False}),
                 "string_value_2": ("STRING", {"default": "", "isInput": False}),
-                "use_param_3": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_3": ("STRING", {"default": "", "isInput": False}),
                 "string_value_3": ("STRING", {"default": "", "isInput": False}),
-                "use_param_4": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_4": ("STRING", {"default": "", "isInput": False}),
                 "string_value_4": ("STRING", {"default": "", "isInput": False}),
-                "use_param_5": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_5": ("STRING", {"default": "", "isInput": False}),
                 "string_value_5": ("STRING", {"default": "", "isInput": False}),
             }
@@ -134,11 +129,11 @@ class Soze_ComfyDeployAPIStringParameters:
     OUTPUT_NODE = True
 
     def run(self, 
-            use_param_1, name_1, string_value_1,
-            use_param_2, name_2, string_value_2,
-            use_param_3, name_3, string_value_3,
-            use_param_4, name_4, string_value_4,
-            use_param_5, name_5, string_value_5,
+            name_1, string_value_1,
+            name_2, string_value_2,
+            name_3, string_value_3,
+            name_4, string_value_4,
+            name_5, string_value_5,
             more_parameters = ""):
         params = []
         # Parse more_parameters if provided
@@ -148,15 +143,15 @@ class Soze_ComfyDeployAPIStringParameters:
                     k, v = pair.split("=", 1)
                     if k.strip() and v.strip():
                         params.append(f"{k.strip()}={v.strip()}")
-        # Only add parameters if use_param_X is True
-        for use, name, value in [
-            (use_param_1, name_1, string_value_1),
-            (use_param_2, name_2, string_value_2),
-            (use_param_3, name_3, string_value_3),
-            (use_param_4, name_4, string_value_4),
-            (use_param_5, name_5, string_value_5),
+        # Only add parameters if name_X is not empty
+        for name, value in [
+            (name_1, string_value_1),
+            (name_2, string_value_2),
+            (name_3, string_value_3),
+            (name_4, string_value_4),
+            (name_5, string_value_5),
         ]:
-            if use and name.strip() and value.strip():
+            if name.strip() and value.strip():
                 params.append(f"{name.strip()}={value.strip()}")
         param_string = ";".join(params)
         return (param_string,)
@@ -167,19 +162,14 @@ class Soze_ComfyDeployAPIIntParameters:
         return {
             "optional": {
                 "more_parameters": ("STRING", {"default": "", "forceInput": True}),
-                "use_param_1": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_1": ("STRING", {"default": "", "isInput": False}),
                 "int_value_1": ("INT", {"default": 0, "min": -1, "isInput": False}),
-                "use_param_2": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_2": ("STRING", {"default": "", "isInput": False}),
                 "int_value_2": ("INT", {"default": 0, "min": -1, "isInput": False}),
-                "use_param_3": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_3": ("STRING", {"default": "", "isInput": False}),
                 "int_value_3": ("INT", {"default": 0, "min": -1, "isInput": False}),
-                "use_param_4": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_4": ("STRING", {"default": "", "isInput": False}),
                 "int_value_4": ("INT", {"default": 0, "min": -1, "isInput": False}),
-                "use_param_5": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_5": ("STRING", {"default": "", "isInput": False}),
                 "int_value_5": ("INT", {"default": 0, "min": -1, "isInput": False}),
             }
@@ -192,11 +182,11 @@ class Soze_ComfyDeployAPIIntParameters:
     OUTPUT_NODE = True
 
     def run(self, 
-            use_param_1, name_1, int_value_1,
-            use_param_2, name_2, int_value_2,
-            use_param_3, name_3, int_value_3,
-            use_param_4, name_4, int_value_4,
-            use_param_5, name_5, int_value_5,
+            name_1, int_value_1,
+            name_2, int_value_2,
+            name_3, int_value_3,
+            name_4, int_value_4,
+            name_5, int_value_5,
             more_parameters = ""):
         params = []
         if more_parameters.strip():
@@ -205,14 +195,14 @@ class Soze_ComfyDeployAPIIntParameters:
                     k, v = pair.split("=", 1)
                     if k.strip() and v.strip():
                         params.append(f"{k.strip()}={v.strip()}")
-        for use, name, value in [
-            (use_param_1, name_1, int_value_1),
-            (use_param_2, name_2, int_value_2),
-            (use_param_3, name_3, int_value_3),
-            (use_param_4, name_4, int_value_4),
-            (use_param_5, name_5, int_value_5),
+        for name, value in [
+            (name_1, int_value_1),
+            (name_2, int_value_2),
+            (name_3, int_value_3),
+            (name_4, int_value_4),
+            (name_5, int_value_5),
         ]:
-            if use and name.strip() and value is not None:
+            if name.strip() and value is not None:
                 params.append(f"{name.strip()}={value}")
         param_string = ";".join(params)
         return (param_string,)
@@ -223,19 +213,14 @@ class Soze_ComfyDeployAPIFloatParameters:
         return {
             "optional": {
                 "more_parameters": ("STRING", {"default": "", "forceInput": True}),
-                "use_param_1": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_1": ("STRING", {"default": "", "isInput": False}),
                 "number_value_1": ("FLOAT", {"default": 0.0, "isInput": False}),
-                "use_param_2": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_2": ("STRING", {"default": "", "isInput": False}),
                 "number_value_2": ("FLOAT", {"default": 0.0, "isInput": False}),
-                "use_param_3": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_3": ("STRING", {"default": "", "isInput": False}),
                 "number_value_3": ("FLOAT", {"default": 0.0, "isInput": False}),
-                "use_param_4": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_4": ("STRING", {"default": "", "isInput": False}),
                 "number_value_4": ("FLOAT", {"default": 0.0, "isInput": False}),
-                "use_param_5": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_5": ("STRING", {"default": "", "isInput": False}),
                 "number_value_5": ("FLOAT", {"default": 0.0, "isInput": False}),
             }
@@ -248,11 +233,11 @@ class Soze_ComfyDeployAPIFloatParameters:
     OUTPUT_NODE = True
 
     def run(self, 
-            use_param_1, name_1, number_value_1,
-            use_param_2, name_2, number_value_2,
-            use_param_3, name_3, number_value_3,
-            use_param_4, name_4, number_value_4,
-            use_param_5, name_5, number_value_5,
+            name_1, number_value_1,
+            name_2, number_value_2,
+            name_3, number_value_3,
+            name_4, number_value_4,
+            name_5, number_value_5,
             more_parameters = ""):
         params = []
         if more_parameters.strip():
@@ -261,14 +246,14 @@ class Soze_ComfyDeployAPIFloatParameters:
                     k, v = pair.split("=", 1)
                     if k.strip() and v.strip():
                         params.append(f"{k.strip()}={v.strip()}")
-        for use, name, value in [
-            (use_param_1, name_1, number_value_1),
-            (use_param_2, name_2, number_value_2),
-            (use_param_3, name_3, number_value_3),
-            (use_param_4, name_4, number_value_4),
-            (use_param_5, name_5, number_value_5),
+        for name, value in [
+            (name_1, number_value_1),
+            (name_2, number_value_2),
+            (name_3, number_value_3),
+            (name_4, number_value_4),
+            (name_5, number_value_5),
         ]:
-            if use and name.strip() and value is not None:
+            if name.strip() and value is not None:
                 params.append(f"{name.strip()}={value}")
         param_string = ";".join(params)
         return (param_string,)
@@ -279,19 +264,14 @@ class Soze_ComfyDeployAPIBooleanParameters:
         return {
             "optional": {
                 "more_parameters": ("STRING", {"default": "", "forceInput": True}),
-                "use_param_1": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_1": ("STRING", {"default": "", "isInput": False}),
                 "boolean_value_1": ("BOOLEAN", {"default": False, "isInput": False}),
-                "use_param_2": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_2": ("STRING", {"default": "", "isInput": False}),
                 "boolean_value_2": ("BOOLEAN", {"default": False, "isInput": False}),
-                "use_param_3": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_3": ("STRING", {"default": "", "isInput": False}),
                 "boolean_value_3": ("BOOLEAN", {"default": False, "isInput": False}),
-                "use_param_4": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_4": ("STRING", {"default": "", "isInput": False}),
                 "boolean_value_4": ("BOOLEAN", {"default": False, "isInput": False}),
-                "use_param_5": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_5": ("STRING", {"default": "", "isInput": False}),
                 "boolean_value_5": ("BOOLEAN", {"default": False, "isInput": False}),
             }
@@ -304,11 +284,11 @@ class Soze_ComfyDeployAPIBooleanParameters:
     OUTPUT_NODE = True
 
     def run(self,
-            use_param_1, name_1, boolean_value_1,
-            use_param_2, name_2, boolean_value_2,
-            use_param_3, name_3, boolean_value_3,
-            use_param_4, name_4, boolean_value_4,
-            use_param_5, name_5, boolean_value_5,
+            name_1, boolean_value_1,
+            name_2, boolean_value_2,
+            name_3, boolean_value_3,
+            name_4, boolean_value_4,
+            name_5, boolean_value_5,
             more_parameters = ""):
         params = []
         if more_parameters.strip():
@@ -317,14 +297,14 @@ class Soze_ComfyDeployAPIBooleanParameters:
                     k, v = pair.split("=", 1)
                     if k.strip() and v.strip():
                         params.append(f"{k.strip()}={v.strip()}")
-        for use, name, value in [
-            (use_param_1, name_1, boolean_value_1),
-            (use_param_2, name_2, boolean_value_2),
-            (use_param_3, name_3, boolean_value_3),
-            (use_param_4, name_4, boolean_value_4),
-            (use_param_5, name_5, boolean_value_5),
+        for name, value in [
+            (name_1, boolean_value_1),
+            (name_2, boolean_value_2),
+            (name_3, boolean_value_3),
+            (name_4, boolean_value_4),
+            (name_5, boolean_value_5),
         ]:
-            if use and name.strip() and value is not None:
+            if name.strip() and value is not None:
                 params.append(f"{name.strip()}={value}")
         param_string = ";".join(params)
         return (param_string,)
@@ -335,34 +315,24 @@ class Soze_ComfyDeployAPIMixedParameters:
         return {
             "optional": {
                 "more_parameters": ("STRING", {"default": "", "forceInput": True}),
-                "use_param_1": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_1": ("STRING", {"default": "", "isInput": False}),
                 "string_value_1": ("STRING", {"default": "", "isInput": False}),
-                "use_param_2": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_2": ("STRING", {"default": "", "isInput": False}),
                 "string_value_2": ("STRING", {"default": "", "isInput": False}),
-                "use_param_3": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_3": ("STRING", {"default": "", "isInput": False}),
                 "int_value_3": ("INT", {"default": 0, "min": -1, "isInput": False}),
-                "use_param_4": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_4": ("STRING", {"default": "", "isInput": False}),
                 "int_value_4": ("INT", {"default": 0, "min": -1, "isInput": False}),
-                "use_param_5": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_5": ("STRING", {"default": "", "isInput": False}),
                 "int_value_5": ("INT", {"default": 0, "min": -1, "isInput": False}),
-                "use_param_6": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_6": ("STRING", {"default": "", "isInput": False}),
                 "number_value_6": ("FLOAT", {"default": 0.0, "isInput": True}),
-                "use_param_7": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_7": ("STRING", {"default": "", "isInput": False}),
                 "number_value_7": ("FLOAT", {"default": 0.0, "isInput": True}),
-                "use_param_8": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_8": ("STRING", {"default": "", "isInput": False}),
                 "number_value_8": ("FLOAT", {"default": 0.0, "isInput": True}),
-                "use_param_9": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_9": ("STRING", {"default": "", "isInput": False}),
                 "bool_value_9": ("BOOLEAN", {"default": False, "isInput": False}),
-                "use_param_10": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_10": ("STRING", {"default": "", "isInput": False}),
                 "bool_value_10": ("BOOLEAN", {"default": False, "isInput": False}),
                 "name_11": ("STRING", {"default": "", "isInput": False}),
@@ -385,16 +355,16 @@ class Soze_ComfyDeployAPIMixedParameters:
     OUTPUT_NODE = True
 
     def run(self, 
-            use_param_1, name_1, string_value_1,
-            use_param_2, name_2, string_value_2,
-            use_param_3, name_3, int_value_3,
-            use_param_4, name_4, int_value_4,
-            use_param_5, name_5, int_value_5,
-            use_param_6, name_6, number_value_6,
-            use_param_7, name_7, number_value_7,
-            use_param_8, name_8, number_value_8,
-            use_param_9, name_9, bool_value_9,
-            use_param_10, name_10, bool_value_10,
+            name_1, string_value_1,
+            name_2, string_value_2,
+            name_3, int_value_3,
+            name_4, int_value_4,
+            name_5, int_value_5,
+            name_6, number_value_6,
+            name_7, number_value_7,
+            name_8, number_value_8,
+            name_9, bool_value_9,
+            name_10, bool_value_10,
             name_11 = "", image_value_11 = None,
             name_12 = "", image_value_12 = None,
             name_13 = "", image_value_13 = None,
@@ -408,31 +378,29 @@ class Soze_ComfyDeployAPIMixedParameters:
                     k, v = pair.split("=", 1)
                     if k.strip() and v.strip():
                         params.append(f"{k.strip()}={v.strip()}")
-        for use, name, value in [
-            (use_param_1, name_1, string_value_1),
-            (use_param_2, name_2, string_value_2),
-            (use_param_3, name_3, int_value_3),
-            (use_param_4, name_4, int_value_4),
-            (use_param_5, name_5, int_value_5),
-            (use_param_6, name_6, number_value_6),
-            (use_param_7, name_7, number_value_7),
-            (use_param_8, name_8, number_value_8),
-            (use_param_9, name_9, bool_value_9),
-            (use_param_10, name_10, bool_value_10),
-            (name_11.strip() and image_value_11 is not None, name_11, image_value_11),
-            (name_12.strip() and image_value_12 is not None, name_12, image_value_12),
-            (name_13.strip() and image_value_13 is not None, name_13, image_value_13),
-            (name_14.strip() and image_value_14 is not None, name_14, image_value_14),
-            (name_15.strip() and image_value_15 is not None, name_15, image_value_15),
+        for name, value in [
+            (name_1, string_value_1),
+            (name_2, string_value_2),
+            (name_3, int_value_3),
+            (name_4, int_value_4),
+            (name_5, int_value_5),
+            (name_6, number_value_6),
+            (name_7, number_value_7),
+            (name_8, number_value_8),
+            (name_9, bool_value_9),
+            (name_10, bool_value_10),
+            (name_11, image_value_11),
+            (name_12, image_value_12),
+            (name_13, image_value_13),
+            (name_14, image_value_14),
+            (name_15, image_value_15),
         ]:
-            if use and name.strip() and value is not None and (not isinstance(value, str) or value.strip()):
-                # Convert image values to base64 if needed
+            if name.strip() and value is not None and (not isinstance(value, str) or value.strip()):
                 if isinstance(value, torch.Tensor) or (isinstance(value, (Image.Image, bytes))):
                     value = upload_to_azure_storage(value)
                 params.append(f"{name.strip()}={value}")
         param_string = ";".join(params)
         return (param_string,)
-
 
 class Soze_ComfyDeployAPIImageParameters:
     @classmethod
