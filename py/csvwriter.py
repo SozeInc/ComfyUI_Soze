@@ -50,8 +50,11 @@ class Soze_CSVWriter:
         csv_line = ','.join(wrapped_values) + '\n'
         
         if csv_filename_path.strip() != "":
+            # Normalize path separators for OS compatibility
+            csv_filename_path = os.path.normpath(csv_filename_path)
             # Ensure the directory exists
             os.makedirs(os.path.dirname(csv_filename_path), exist_ok=True)
+            
             
             # Append the line to the CSV file, creating it if it doesn't exist
             try:

@@ -40,6 +40,7 @@ class Soze_CSVReader:
         else:
             if csv_filename_path.strip() != "":
                 csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename_path)
+                csv_path = os.path.normpath(csv_path)  # Normalize path separators
                 if not os.path.exists(csv_path):
                     raise FileNotFoundError(f"CSV file not found: {csv_path}")
                 try:
@@ -104,6 +105,7 @@ class Soze_CSVReaderXCheckpoint:
 
         if csv_filename_path.strip() != "":
             csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename_path.strip())
+            csv_path = os.path.normpath(csv_path)  # Normalize path separators
 
             if not os.path.exists(csv_path):
                 raise FileNotFoundError(f"CSV file not found: {csv_path}")
@@ -182,6 +184,7 @@ class Soze_CSVReaderXLora:
 
         if csv_filename_path.strip() != "":
             csv_path = os.path.join(os.path.dirname(__file__), "csv_files", csv_filename_path.strip())
+            csv_path = os.path.normpath(csv_path)  # Normalize path separators
 
             if not os.path.exists(csv_path):
                 raise FileNotFoundError(f"CSV file not found: {csv_path}")
