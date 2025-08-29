@@ -18,7 +18,7 @@ from .py.xy import Soze_UnzippedProductAny
 #from .py.promptxlora import Soze_PromptXLora
 from .py.lorafileloader import Soze_LoraFilePathLoader
 from .py.ckptfileloader import Soze_CheckpointFilePathLoader
-#from .py.comfydeploy import Soze_ComfyDeployAPINode
+from .py.comfydeploy import Soze_ComfyDeployAPINode, Soze_ComfyDeployAPIIntParameters, Soze_ComfyDeployAPIBooleanParameters, Soze_ComfyDeployAPIImageParameters, Soze_ComfyDeployAPIMixedParameters, Soze_ComfyDeployAPIFloatParameters, Soze_ComfyDeployAPIStringParameters
 from .py.elevenlabs import Soze_ElevenLabsVoiceRetrieverNode
 
 from .py.strings import (
@@ -81,6 +81,14 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         #"ComfyDeploy API Node": Soze_ComfyDeployAPINode,
                         "Is String Empty": Soze_IsStringEmpty,
                         "ElevenLabs Voice Retriever": Soze_ElevenLabsVoiceRetrieverNode,
+                        "ComfyDeploy API Node": Soze_ComfyDeployAPINode,
+                        "ComfyDeploy API String Parameters": Soze_ComfyDeployAPIStringParameters,
+                        "ComfyDeploy API Int Parameters": Soze_ComfyDeployAPIIntParameters,
+                        "ComfyDeploy API Float Parameters": Soze_ComfyDeployAPIFloatParameters,
+                        "ComfyDeploy API Image Parameters": Soze_ComfyDeployAPIImageParameters,
+                        "ComfyDeploy API Mixed Parameters": Soze_ComfyDeployAPIMixedParameters,
+                        "ComfyDeploy API Boolean Parameters": Soze_ComfyDeployAPIBooleanParameters
+
                         # "Is Input In List": Soze_IsInputInList,
                         }
 
@@ -118,6 +126,13 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 #"ComfyDeploy API Node": "ComfyDeploy API Node (Soze)",
                                 "Is String Empty": "Is String Empty (Soze)",
                                 "ElevenLabs Voice Retriever": "ElevenLabs Voice Retriever (Soze)",
+                                "ComfyDeploy API Node": "ComfyDeploy API Node (Soze)",
+                                "ComfyDeploy API String Parameters": "ComfyDeploy API String Parameters (Soze)",
+                                "ComfyDeploy API Int Parameters": "ComfyDeploy API Int Parameters (Soze)",
+                                "ComfyDeploy API Float Parameters": "ComfyDeploy API Float Parameters (Soze)",
+                                "ComfyDeploy API Image Parameters": "ComfyDeploy API Image Parameters (Soze)",
+                                "ComfyDeploy API Mixed Parameters": "ComfyDeploy API Mixed Parameters (Soze)",
+                                "ComfyDeploy API Boolean Parameters": "ComfyDeploy API Boolean Parameters (Soze)",
                                 # "Is Input In List": "Is Input In List (Soze)"
                                 
                               }
