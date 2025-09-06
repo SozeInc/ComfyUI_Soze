@@ -482,7 +482,7 @@ class Soze_XYImage:
     RETURN_NAMES = ("Image",)
     INPUT_IS_LIST = (True,)
     OUTPUT_IS_LIST = (True,)
-    OUTPUT_NODE = False
+    OUTPUT_NODE = True
     FUNCTION = "xy_image"
 
     CATEGORY = "image"

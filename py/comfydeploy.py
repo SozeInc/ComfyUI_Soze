@@ -14,8 +14,7 @@ def upload_to_azure_storage(image):
     env_var_name = "SOZE_AZURE_STORAGE_CONNECTION_STRING"
     connection_string = os.getenv(env_var_name)
     if not connection_string:
-        print(f"Environment variable {env_var_name} not set.")
-        return None
+        raise EnvironmentError(f"{env_var_name} environment variable not set.")
 
     # Prepare image for upload
     if isinstance(image, torch.Tensor):
@@ -43,7 +42,7 @@ def upload_to_azure_storage(image):
 
     # Set Azure container and blob path
     container_name = "comfyui-output"
-    blob_name = f"comfyui-input/{filename}"
+    blob_name = f"inputs/{filename}"
 
     # Upload to Azure
     blob_service_client = BlobServiceClient.from_connection_string(connection_string)
@@ -61,6 +60,10 @@ def upload_to_azure_storage(image):
     return url    
 
 class Soze_ComfyDeployAPINode:
+    def IS_CHANGED(self, *args, **kwargs):
+        return True
+
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -88,8 +91,20 @@ class Soze_ComfyDeployAPINode:
             for pair in api_parameters.strip().split(";"):
                 if "=" in pair:
                     k, v = pair.split("=", 1)
-                    if k.strip() and v.strip():
-                        parameters[k.strip()] = v.strip()
+                    k = k.strip()
+                    v = v.strip()
+                    # Format values for JSON: bool, int, float as native types; strings and images as quoted
+                    if v.lower() in ["true", "false"]:
+                        parameters[k] = True if v.lower() == "true" else False
+                    else:
+                        try:
+                            if "." in v:
+                                parameters[k] = float(v)
+                            else:
+                                parameters[k] = int(v)
+                        except ValueError:
+                            # Strings and image URLs should be quoted in the parameter string, but in JSON they are just strings
+                            parameters[k] = v
 
         payload = {
             "deployment_id": deployment_id,
@@ -203,6 +218,7 @@ class Soze_ComfyDeployAPIIntParameters:
             (name_5, int_value_5),
         ]:
             if name.strip() and value is not None:
+                # Ensure integers are not quoted
                 params.append(f"{name.strip()}={value}")
         param_string = ";".join(params)
         return (param_string,)
@@ -254,6 +270,7 @@ class Soze_ComfyDeployAPIFloatParameters:
             (name_5, number_value_5),
         ]:
             if name.strip() and value is not None:
+                # Ensure floats are not quoted
                 params.append(f"{name.strip()}={value}")
         param_string = ";".join(params)
         return (param_string,)
@@ -305,6 +322,9 @@ class Soze_ComfyDeployAPIBooleanParameters:
             (name_5, boolean_value_5),
         ]:
             if name.strip() and value is not None:
+                # Ensure boolean values are lower case and not quoted
+                if isinstance(value, bool):
+                    value = "true" if value else "false"
                 params.append(f"{name.strip()}={value}")
         param_string = ";".join(params)
         return (param_string,)
@@ -396,7 +416,12 @@ class Soze_ComfyDeployAPIMixedParameters:
             (name_15, image_value_15),
         ]:
             if name.strip() and value is not None and (not isinstance(value, str) or value.strip()):
-                if isinstance(value, torch.Tensor) or (isinstance(value, (Image.Image, bytes))):
+                # Ensure booleans, ints, and floats are not quoted
+                if isinstance(value, bool):
+                    value = "true" if value else "false"
+                elif isinstance(value, (int, float)):
+                    pass  # leave as is, don't quote
+                elif isinstance(value, torch.Tensor) or (isinstance(value, (Image.Image, bytes))):
                     value = upload_to_azure_storage(value)
                 params.append(f"{name.strip()}={value}")
         param_string = ";".join(params)

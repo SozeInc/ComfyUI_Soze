@@ -44,8 +44,13 @@ class Soze_CSVReader:
                 if not os.path.exists(csv_path):
                     raise FileNotFoundError(f"CSV file not found: {csv_path}")
                 try:
-                    with open(csv_path, 'r', newline='') as csvfile:
-                        csv_data = csvfile.readlines()
+                    # Try utf-8 first, fallback to windows-1252 if it fails
+                    try:
+                        with open(csv_path, 'r', newline='', encoding='utf-8-sig') as csvfile:
+                            csv_data = csvfile.readlines()
+                    except UnicodeDecodeError:
+                        with open(csv_path, 'r', newline='', encoding='windows-1252') as csvfile:
+                            csv_data = csvfile.readlines()
                 except FileNotFoundError:
                     raise  # Re-raise the FileNotFoundError
                 except Exception as e:
@@ -110,8 +115,13 @@ class Soze_CSVReaderXCheckpoint:
             if not os.path.exists(csv_path):
                 raise FileNotFoundError(f"CSV file not found: {csv_path}")
             try:
-                with open(csv_path, 'r', newline='') as csvfile:
-                    csv_data = csvfile.readlines()
+                # Try utf-8 first, fallback to windows-1252 if it fails
+                try:
+                    with open(csv_path, 'r', newline='', encoding='utf-8-sig') as csvfile:
+                        csv_data = csvfile.readlines()
+                except UnicodeDecodeError:
+                    with open(csv_path, 'r', newline='', encoding='windows-1252') as csvfile:
+                        csv_data = csvfile.readlines()
             except FileNotFoundError:
                 raise  # Re-raise the FileNotFoundError
             except Exception as e:
@@ -170,7 +180,7 @@ class Soze_CSVReaderXLora:
     OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(self):
+    def IS_CHANGED(self, csv_filename_path, index, start_lora_name, lora_count):
         return time.time()    
     
     def strip_quotes(self, value):
@@ -189,8 +199,13 @@ class Soze_CSVReaderXLora:
             if not os.path.exists(csv_path):
                 raise FileNotFoundError(f"CSV file not found: {csv_path}")
             try:
-                with open(csv_path, 'r', newline='') as csvfile:
-                    csv_data = csvfile.readlines()
+                # Try utf-8 first, fallback to windows-1252 if it fails
+                try:
+                    with open(csv_path, 'r', newline='', encoding='utf-8-sig') as csvfile:
+                        csv_data = csvfile.readlines()
+                except UnicodeDecodeError:
+                    with open(csv_path, 'r', newline='', encoding='windows-1252') as csvfile:
+                        csv_data = csvfile.readlines()
             except FileNotFoundError:
                 raise  # Re-raise the FileNotFoundError
             except Exception as e:

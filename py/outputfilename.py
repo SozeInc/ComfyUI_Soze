@@ -1,5 +1,6 @@
 import datetime
 import re
+import uuid
 
 
 def replace_date_placeholders(text):
@@ -38,31 +39,19 @@ class Soze_OutputFilename:
     CATEGORY = 'strings'
 
     def OutputFilename(self, Path_Delimiter, Path_Input_1, Path_Input_2, Path_Input_3, Path_Input_4, Path_Input_5, File_Delimiter, File_Input_1, File_Input_2, File_Input_3, File_Input_4, File_Input_5):
-        paths = []
-        if Path_Input_1:
-            paths.append(replace_date_placeholders(Path_Input_1))
-        if Path_Input_2:
-            paths.append(replace_date_placeholders(Path_Input_2))
-        if Path_Input_3:
-            paths.append(replace_date_placeholders(Path_Input_3))
-        if Path_Input_4:
-            paths.append(replace_date_placeholders(Path_Input_4))
-        if Path_Input_5:
-            paths.append(replace_date_placeholders(Path_Input_5))
+        # Collect and process path inputs in a loop for cleaner code
+        path_inputs = [Path_Input_1, Path_Input_2, Path_Input_3, Path_Input_4, Path_Input_5]
+        paths = [replace_date_placeholders(p) for p in path_inputs if p]
         path = Path_Delimiter.join(paths)
-        files = []
-        if File_Input_1:
-            files.append(replace_date_placeholders(File_Input_1))
-        if File_Input_2:
-            files.append(replace_date_placeholders(File_Input_2))
-        if File_Input_3:
-            files.append(replace_date_placeholders(File_Input_3))
-        if File_Input_4:
-            files.append(replace_date_placeholders(File_Input_4))
-        if File_Input_5:
-            files.append(replace_date_placeholders(File_Input_5))
-        files = File_Delimiter.join(files)
-        filepath = Path_Delimiter.join([path,files])
-        return (filepath, path,files,)
 
-    
+        file_inputs = [File_Input_1, File_Input_2, File_Input_3, File_Input_4, File_Input_5]
+        if not any(f.strip() for f in file_inputs):
+            files = replace_date_placeholders(str(uuid.uuid4()))
+        else:
+            files_list = [replace_date_placeholders(f) for f in file_inputs if f]
+            files = File_Delimiter.join(files_list)
+
+        filepath = Path_Delimiter.join([path, files])
+        return (filepath, path, files,)
+
+
