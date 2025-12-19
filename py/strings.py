@@ -1,6 +1,8 @@
 import numpy as np
 import os
 import re
+import time
+import folder_paths
 
 from .utils import (
     read_from_file,
@@ -224,3 +226,254 @@ class Soze_IsStringEmpty:
         if input_text is None:
             return (True,)
         return (input_text.strip() == "",)
+    
+
+
+class Soze_MultiFindAndReplace:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "input_string": ("STRING", {"multiline": False}),
+            },
+            "optional": {
+                "find_text1": ("STRING", {"multiline": False}),
+                "replace_text1": ("STRING", {"multiline": False}),
+                "find_text2": ("STRING", {"multiline": False}),
+                "replace_text2": ("STRING", {"multiline": False}),
+                "find_text3": ("STRING", {"multiline": False}),
+                "replace_text3": ("STRING", {"multiline": False}),
+                "find_text4": ("STRING", {"multiline": False}),
+                "replace_text4": ("STRING", {"multiline": False}),
+                "find_text5": ("STRING", {"multiline": False}),
+                "replace_text5": ("STRING", {"multiline": False}),
+                "find_text6": ("STRING", {"multiline": False}),
+                "replace_text6": ("STRING", {"multiline": False}),
+                "find_text7": ("STRING", {"multiline": False}),
+                "replace_text7": ("STRING", {"multiline": False}),
+                "find_text8": ("STRING", {"multiline": False}),
+                "replace_text8": ("STRING", {"multiline": False}),
+                "find_text9": ("STRING", {"multiline": False}),
+                "replace_text9": ("STRING", {"multiline": False}),
+                "find_text10": ("STRING", {"multiline": False}),
+                "replace_text10": ("STRING", {"multiline": False}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    FUNCTION = "findandreplace"
+    CATEGORY = "strings"
+
+    def findandreplace(self, input_string, find_text1="", replace_text1="", find_text2="", replace_text2="", find_text3="", replace_text3="", find_text4="", replace_text4="", find_text5="", replace_text5="", find_text6="", replace_text6="", find_text7="", replace_text7="", find_text8="", replace_text8="", find_text9="", replace_text9="", find_text10="", replace_text10=""):
+        result = input_string
+        find_replace_pairs = [
+            (find_text1, replace_text1),
+            (find_text2, replace_text2),
+            (find_text3, replace_text3),
+            (find_text4, replace_text4),
+            (find_text5, replace_text5),
+            (find_text6, replace_text6),
+            (find_text7, replace_text7),
+            (find_text8, replace_text8),
+            (find_text9, replace_text9),
+            (find_text10, replace_text10),
+        ]
+
+        for find_text, replace_text in find_replace_pairs:
+            if find_text:
+                result = result.replace(find_text, replace_text)
+
+        return (result,)
+
+
+#Node that performs various string functions
+class Soze_StringFunctions:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "input_string": ("STRING", {"multiline": False, "forceInput": True}),
+            },
+            "optional": {
+                "string_function_type1": ([
+                        "NONE", 
+                        "UPPERCASE",
+                        "LOWERCASE",
+                        "TITLECASE",
+                        "REVERSE",
+                        "TRIM_SPACES",
+                        "REMOVE_DIGITS",
+                        "REMOVE_PUNCTUATION",
+                        "REPLACE_SPACES_WITH_UNDERSCORE",
+                        "REPLACE_UNDERSCORES_WITH_SPACES",
+                        "REPLACE_HYPHENS_WITH_SPACES",
+                        "REPLACE_SPACES_WITH_HYPHENS",
+                        "REMOVE_NUMBERS_IN_ROUND_BRACKETS",
+                        "SPLIT_LINES",
+                    ], {                    
+                        "default": "NONE"
+                }),
+                "string_function_type2": ([
+                        "NONE", 
+                        "UPPERCASE",
+                        "LOWERCASE",
+                        "TITLECASE",
+                        "REVERSE",
+                        "TRIM_SPACES",
+                        "REMOVE_DIGITS",
+                        "REMOVE_PUNCTUATION",
+                        "REPLACE_SPACES_WITH_UNDERSCORE",
+                        "REPLACE_UNDERSCORES_WITH_SPACES",
+                         "REPLACE_HYPHENS_WITH_SPACES",
+                        "REPLACE_SPACES_WITH_HYPHENS",
+                       "REMOVE_NUMBERS_IN_ROUND_BRACKETS",
+                        "SPLIT_LINES",
+                    ], {                    
+                        "default": "NONE"
+                }),
+                "string_function_type3": ([
+                        "NONE", 
+                        "UPPERCASE",
+                        "LOWERCASE",
+                        "TITLECASE",
+                        "REVERSE",
+                        "TRIM_SPACES",
+                        "REMOVE_DIGITS",
+                        "REMOVE_PUNCTUATION",
+                        "REPLACE_SPACES_WITH_UNDERSCORE",
+                        "REPLACE_UNDERSCORES_WITH_SPACES",
+                        "REPLACE_HYPHENS_WITH_SPACES",
+                        "REPLACE_SPACES_WITH_HYPHENS",
+                        "REMOVE_NUMBERS_IN_ROUND_BRACKETS",
+                        "SPLIT_LINES",
+                    ], {                    
+                        "default": "NONE"
+                }),
+                "string_function_type4": ([
+                        "NONE", 
+                        "UPPERCASE",
+                        "LOWERCASE",
+                        "TITLECASE",
+                        "REVERSE",
+                        "TRIM_SPACES",
+                        "REMOVE_DIGITS",
+                        "REMOVE_PUNCTUATION",
+                        "REPLACE_SPACES_WITH_UNDERSCORE",
+                        "REPLACE_UNDERSCORES_WITH_SPACES",
+                        "REPLACE_HYPHENS_WITH_SPACES",
+                        "REPLACE_SPACES_WITH_HYPHENS",
+                        "REMOVE_NUMBERS_IN_ROUND_BRACKETS",
+                        "SPLIT_LINES",
+                    ], {                    
+                        "default": "NONE"
+                }),
+                "string_function_type5": ([
+                        "NONE", 
+                        "UPPERCASE",
+                        "LOWERCASE",
+                        "TITLECASE",
+                        "REVERSE",
+                        "TRIM_SPACES",
+                        "REMOVE_DIGITS",
+                        "REMOVE_PUNCTUATION",
+                        "REPLACE_SPACES_WITH_UNDERSCORE",
+                        "REPLACE_UNDERSCORES_WITH_SPACES",
+                        "REPLACE_HYPHENS_WITH_SPACES",
+                        "REPLACE_SPACES_WITH_HYPHENS",
+                        "REMOVE_NUMBERS_IN_ROUND_BRACKETS",
+                        "SPLIT_LINES",
+                    ], {                    
+                        "default": "NONE"
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    FUNCTION = "executefunction"
+    CATEGORY = "strings"
+
+    def process_string_function(self, input_string, function_type):
+        if function_type == "UPPERCASE":
+            result = input_string.upper()
+        elif function_type == "LOWERCASE":
+            result = input_string.lower()
+        elif function_type == "TITLECASE":
+            result = input_string.title()
+        elif function_type == "REVERSE":
+            result = input_string[::-1]
+        elif function_type == "TRIM_SPACES":
+            result = input_string.strip()
+        elif function_type == "REMOVE_DIGITS":
+            result = re.sub(r'\d+', '', input_string)
+        elif function_type == "REMOVE_PUNCTUATION":
+            result = re.sub(r'[^\w\s]', '', input_string)
+        elif function_type == "REPLACE_SPACES_WITH_UNDERSCORE":
+            result = input_string.replace(' ', '_')
+        elif function_type == "REPLACE_UNDERSCORES_WITH_SPACES":
+            result = input_string.replace('_', ' ')
+        elif function_type == "REPLACE_HYPHENS_WITH_SPACES":
+            result = input_string.replace('-', ' ')
+        elif function_type == "REPLACE_SPACES_WITH_HYPHENS":
+            result = input_string.replace(' ', '-')
+        elif function_type == "REMOVE_NUMBERS_IN_ROUND_BRACKETS":
+            result = re.sub(r'\(\d+\)', '', input_string)
+        elif function_type == "SPLIT_LINES":
+            result = '|'.join(input_string.splitlines())
+        else:
+            result = input_string
+        return result
+
+    def executefunction(self, input_string, string_function_type1="NONE", string_function_type2="NONE", string_function_type3="NONE", string_function_type4="NONE", string_function_type5="NONE"):
+        result = input_string
+        function_types = [string_function_type1, string_function_type2, string_function_type3, string_function_type4, string_function_type5]
+        for function_type in function_types:
+            result = self.process_string_function(result, function_type)
+        return (result,)
+
+
+
+
+class Soze_AppendToTextFile:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "filename_path": ("STRING", {"default": "","multiline": False}),
+                "append_text": ("STRING", {"default": "", 'isInput': True }),
+            }
+        }
+    RETURN_NAMES = ()
+    RETURN_TYPES = ()
+    FUNCTION = "append_to_file"
+    CATEGORY = "utils"
+    OUTPUT_NODE = True
+    @classmethod
+    def IS_CHANGED(self, filename_path, append_text):
+        return time.time()  
+    
+    def append_to_file(self, filename_path, append_text):
+        if filename_path.strip() != "":
+            # Get the ComfyUI output directory
+            output_dir = folder_paths.get_output_directory()
+            
+            # Normalize path separators for OS compatibility
+            filename_path = os.path.normpath(filename_path)
+            
+            # Combine output directory with the provided filename path
+            full_path = os.path.join(output_dir, filename_path)
+            
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            # Append the text to the file, creating it if it doesn't exist
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    with open(full_path, 'a', encoding='utf-8') as file:
+                        file.write(append_text + '\n')
+                    break
+                except Exception as e:
+                    if attempt < retries - 1:
+                        time.sleep(0.1)
+                    else:
+                        raise e
+        return ()

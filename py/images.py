@@ -270,6 +270,198 @@ class Soze_LoadImagesFromFolder:
     def IS_CHANGED(cls, *args, **kwargs):
         # Return a value that changes each time to force re-execution
         return float("NaN")
+
+class Soze_LoadImagesFromFilepath:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "Image_Filepath": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING", "BOOL")
+    RETURN_NAMES = ("Image", "Mask", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Image_Changed")
+    FUNCTION = "load_images_from_filepath"
+
+    CATEGORY = "image"
+    
+    def load_images_from_filepath(self, Image_Filepath):
+        if not os.path.isfile(Image_Filepath):
+            raise FileNotFoundError(f"File not found: {Image_Filepath}")
+
+        input_filepath = folder_paths.get_annotated_filepath(Image_Filepath)
+        input_filename = os.path.basename(input_filepath)
+        input_filename_no_ext = os.path.splitext(input_filename)[0]
+
+        img = node_helpers.pillow(Image.open, input_filepath)
+        
+        output_images = []
+        output_masks = []
+        w, h = None, None
+
+        excluded_formats = ['MPO']
+        for i in ImageSequence.Iterator(img):
+            i = node_helpers.pillow(ImageOps.exif_transpose, i)
+            if i.mode == 'I':
+                i = i.point(lambda i: i * (1 / 255))
+            image = i.convert("RGB")
+
+            if len(output_images) == 0:
+                w = image.size[0]
+                h = image.size[1]
+
+            if image.size[0] != w or image.size[1] != h:
+                continue
+
+            image = np.array(image).astype(np.float32) / 255.0
+            image = torch.from_numpy(image)[None,]
+            if 'A' in i.getbands():
+                mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+                mask = 1. - torch.from_numpy(mask)
+            else:
+                mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+            output_images.append(image)
+            output_masks.append(mask.unsqueeze(0))
+
+        if len(output_images) > 1 and img.format not in excluded_formats:
+            output_image = torch.cat(output_images, dim=0)
+            output_mask = torch.cat(output_masks, dim=0)
+        else:
+            output_image = output_images[0]
+            output_mask = output_masks[0]
+
+        # Return similar tuple as Soze_LoadImagesFromFolder for consistency
+        return (output_image, output_mask, os.path.dirname(input_filepath), input_filepath, input_filename, input_filename_no_ext, False)
+
+
+    
+    
+class Soze_LoadImagesFromFolderXLora:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "Input_Folder": ("STRING", {"default": ""}),
+                "start_lora_name": (folder_paths.get_filename_list("loras"), {"tooltip": "The name of the starting LoRA."}),
+                "lora_count": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1, "tooltip": "The number of LoRAs to load."})
+            },
+            "optional": {
+                "index": ("INT", {"default": 0, "min": 0, "max": 1000000, "control_after_generate": True, "step": 1}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT")
+    RETURN_NAMES = ("Image", "Mask", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Lora_Full_Path", "Lora_Name_Only", "Lora_Index")
+    FUNCTION = "load_images"
+
+    CATEGORY = "image"
+
+    def load_images(self, Input_Folder, index, start_lora_name, lora_count):
+        if not os.path.isdir(Input_Folder):
+            raise FileNotFoundError(f"Folder not found: {Input_Folder}")
+        dir_files = os.listdir(Input_Folder)
+        if len(dir_files) == 0:
+            raise FileNotFoundError(f"Folder only has {len(dir_files)} files in it: {Input_Folder}")
+
+        # Filter files by extension
+        valid_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+        dir_files = [f for f in dir_files if any(f.lower().endswith(ext) for ext in valid_extensions)]
+
+        dir_files = sorted(dir_files)
+        dir_files = [os.path.join(Input_Folder, x) for x in dir_files]
+
+        images = []
+        masks = []
+        image_path_list = []
+
+        excluded_formats = ['MPO']
+
+        # Calculate which image and lora to use
+        num_images = len(dir_files)
+        if num_images == 0:
+            raise FileNotFoundError(f"No valid images found in folder: {Input_Folder}")
+
+        image_idx = index % num_images
+        lora_list = folder_paths.get_filename_list("loras")
+        try:
+            start_lora_index = lora_list.index(start_lora_name)
+        except ValueError:
+            raise ValueError(f"Lora '{start_lora_name}' not found in lora list.")
+
+        lora_index = start_lora_index + (index // num_images)
+        if lora_index >= len(lora_list):
+            raise ValueError(f"There are no more lora in the list ({len(lora_list)})")
+        elif lora_index >= (start_lora_index + lora_count):
+            raise ValueError(f"Index {index} has completed the iteration of rows {num_images} against each lora indicated {lora_count}.")
+
+        image_path = dir_files[image_idx]
+        if os.path.isdir(image_path):
+            raise ValueError(f"Image path is a directory: {image_path}")
+
+        input_filepath = folder_paths.get_annotated_filepath(image_path)
+        input_filename = os.path.basename(input_filepath)
+        input_filename_no_ext = os.path.splitext(input_filename)[0]
+
+        img = node_helpers.pillow(Image.open, input_filepath)
+
+        output_images = []
+        output_masks = []
+        w, h = None, None
+
+        for i in ImageSequence.Iterator(img):
+            i = node_helpers.pillow(ImageOps.exif_transpose, i)
+
+            if i.mode == 'I':
+                i = i.point(lambda i: i * (1 / 255))
+            image = i.convert("RGB")
+
+            if len(output_images) == 0:
+                w = image.size[0]
+                h = image.size[1]
+
+            if image.size[0] != w or image.size[1] != h:
+                continue
+
+            image = np.array(image).astype(np.float32) / 255.0
+            image = torch.from_numpy(image)[None,]
+            if 'A' in i.getbands():
+                mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+                mask = 1. - torch.from_numpy(mask)
+            else:
+                mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+            output_images.append(image)
+            output_masks.append(mask.unsqueeze(0))
+
+        if len(output_images) > 1 and img.format not in excluded_formats:
+            output_image = torch.cat(output_images, dim=0)
+            output_mask = torch.cat(output_masks, dim=0)
+        else:
+            output_image = output_images[0]
+            output_mask = output_masks[0]
+
+        lora_full_path = folder_paths.get_full_path_or_raise("loras", lora_list[lora_index])
+        lora_name_only = os.path.basename(lora_list[lora_index])
+
+        previous_input_filename = read_from_file('sozeimagebatchcache.txt')
+        write_to_file('sozeimagebatchcache.txt', input_filename)
+
+        return (
+            output_image,
+            output_mask,
+            Input_Folder,
+            input_filepath,
+            input_filename,
+            input_filename_no_ext,
+            lora_full_path,
+            lora_name_only,
+            lora_index
+        )
+
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
+        # Return a value that changes each time to force re-execution
+        return float("NaN")
     
 
 
@@ -1016,86 +1208,113 @@ class Soze_GetImageColors:
     
 
 #Code from https://github.com/dzqdzq/ComfyUI-crop-alpha
-class Soze_AlphaCropAndPositionImage:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "maintain_aspect": (["True", "False"], {"default": "True"}),
-                "left_padding": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8}),
-                "top_padding": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8}),
-                "right_padding": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8}),
-                "bottom_padding": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8}),
-            }
-        }
+# class Soze_AlphaCropAndPositionImage:
+#     @classmethod
+#     def INPUT_TYPES(cls):
+#         return {
+#             "required": {
+#                 "image": ("IMAGE",),
+#                 "maintain_aspect": (["True", "False"], {"default": "True"}),
+#                 "left_padding": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8}),
+#                 "top_padding": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8}),
+#                 "right_padding": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8}),
+#                 "bottom_padding": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 8}),
+#             }
+#         }
 
-    RETURN_TYPES = ("IMAGE", "INT", "INT")
-    RETURN_NAMES = ("image", "width", "height")
+#     RETURN_TYPES = ("IMAGE", "INT", "INT")
+#     RETURN_NAMES = ("image", "width", "height")
 
-    FUNCTION = "crop"
-    CATEGORY = "image/processing"
+#     FUNCTION = "crop"
+#     CATEGORY = "image/processing"
 
-    def crop(self, image, maintain_aspect, left_padding: int = 0, right_padding: int = 0, top_padding: int = 0, bottom_padding: int = 0):
-        cropped_images = []
-        cropped_masks = []
+#     def crop(self, image, maintain_aspect, left_padding: int = 0, right_padding: int = 0, top_padding: int = 0, bottom_padding: int = 0):
+#         cropped_images = []
+#         cropped_masks = []
 
-        for img in image:
-            alpha = img[..., 3]
+#         for img in image:
+#             alpha = img[..., 3]
 
-            height = img.shape[0]
-            width = img.shape[1]
-            mask = (alpha > 0.01)
+#             height = img.shape[0]
+#             width = img.shape[1]
+#             mask = (alpha > 0.01)
 
-            rows = torch.any(mask, dim=1)
-            cols = torch.any(mask, dim=0)
+#             rows = torch.any(mask, dim=1)
+#             cols = torch.any(mask, dim=0)
 
-            ymin, ymax = self._find_boundary(rows)
-            xmin, xmax = self._find_boundary(cols)
+#             ymin, ymax = self._find_boundary(rows)
+#             xmin, xmax = self._find_boundary(cols)
 
-            if ymin is None or xmin is None:
-                cropped_images.append(img)
-                cropped_masks.append(torch.zeros_like(alpha))
-                continue
+#             if ymin is None or xmin is None:
+#                 cropped_images.append(img)
+#                 cropped_masks.append(torch.zeros_like(alpha))
+#                 continue
 
-            cropped = img[ymin:ymax, xmin:xmax, :4]
-            cropped_mask = alpha[ymin:ymax, xmin:xmax]
+#             cropped = img[ymin:ymax, xmin:xmax, :4]
+#             cropped_mask = alpha[ymin:ymax, xmin:xmax]
 
-            # Apply padding to the cropped image
-            padded_height = (ymax - ymin) + top_padding + bottom_padding
-            padded_width = (xmax - xmin) + left_padding + right_padding
+#             # Apply padding to the cropped image
+#             padded_height = (ymax - ymin) + top_padding + bottom_padding
+#             padded_width = (xmax - xmin) + left_padding + right_padding
 
-            if maintain_aspect == "True":
-                if padded_height > padded_width:
-                    pad = (padded_height - padded_width) // 2
-                    left_padding += pad
-                    right_padding += pad
-                    padded_width = padded_height
-                else:
-                    pad = (padded_width - padded_height) // 2
-                    top_padding += pad
-                    bottom_padding += pad
-                    padded_height = padded_width
+#             if maintain_aspect == "True":
+#                 if padded_height > padded_width:
+#                     pad = (padded_height - padded_width) // 2
+#                     left_padding += pad
+#                     right_padding += pad
+#                     padded_width = padded_height
+#                 else:
+#                     pad = (padded_width - padded_height) // 2
+#                     top_padding += pad
+#                     bottom_padding += pad
+#                     padded_height = padded_width
 
-            padded_image = torch.zeros((padded_height, padded_width, 4), dtype=img.dtype)
-            padded_image[top_padding:top_padding + (ymax - ymin), left_padding:left_padding + (xmax - xmin), :] = cropped
+#             padded_image = torch.zeros((padded_height, padded_width, 4), dtype=img.dtype)
+#             padded_image[top_padding:top_padding + (ymax - ymin), left_padding:left_padding + (xmax - xmin), :] = cropped
 
-            padded_mask = torch.zeros((padded_height, padded_width), dtype=alpha.dtype)
-            padded_mask[top_padding:top_padding + (ymax - ymin), left_padding:left_padding + (xmax - xmin)] = cropped_mask
+#             padded_mask = torch.zeros((padded_height, padded_width), dtype=alpha.dtype)
+#             padded_mask[top_padding:top_padding + (ymax - ymin), left_padding:left_padding + (xmax - xmin)] = cropped_mask
 
-            cropped_images.append(padded_image)
-            cropped_masks.append(padded_mask)
+#             cropped_images.append(padded_image)
+#             cropped_masks.append(padded_mask)
 
-        return cropped_images, padded_width, padded_height
+#         return cropped_images, padded_width, padded_height
     
-    def _find_boundary(self, arr):
-        nz = torch.nonzero(arr)
-        if nz.numel() == 0:
-            return (None, None)
-        return (nz[0].item(), nz[-1].item() + 1)
+#     def _find_boundary(self, arr):
+#         nz = torch.nonzero(arr)
+#         if nz.numel() == 0:
+#             return (None, None)
+#         return (nz[0].item(), nz[-1].item() + 1)
 
 
 class Soze_ShrinkImage:
+    __doc__ = """
+    ShrinkImage(
+        image: IMAGE,
+        mode: ["scale", "pixels"] = "scale",
+        resize_algorithm: ["NEAREST", "BILINEAR", "BICUBIC", "LANCZOS"] = "LANCZOS",
+        maintain_aspect: ["True", "False"] = "True",
+        scale: FLOAT = 0.5,
+        width: FLOAT = 100,
+        height: FLOAT = 100
+    ) -> IMAGE
+
+    Shrinks the input image to the specified scale or pixel dimensions using the selected resize algorithm.
+    Optionally maintains the aspect ratio of the image.
+
+    Parameters:
+    - image: The input image to be shrunk.
+    - mode: The mode of shrinking, either by scale (relative to original size) or by absolute pixel dimensions.
+    - resize_algorithm: The algorithm to use for resizing the image.
+    - maintain_aspect: Whether to maintain the aspect ratio of the image when resizing.
+    - scale: The scale factor to shrink the image. Ignored if mode is set to "pixels".
+    - width: The target width in pixels if mode is set to "pixels".
+    - height: The target height in pixels if mode is set to "pixels".
+
+    Returns:
+    - The shrunk image.
+    """
+
     def __init__(self):
         pass
 
@@ -1183,7 +1402,7 @@ class Soze_PadMask:
     RETURN_TYPES = ("MASK",)
     RETURN_NAMES = ("mask",)
     FUNCTION = "pad_mask"
-    CATEGORY = "image/processing"
+    CATEGORY = "soze"
 
     def pad_mask(self, mask, top_padding, bottom_padding, left_padding, right_padding):
         # Get the original mask dimensions
@@ -1224,3 +1443,53 @@ class Soze_PadMask:
 
         return padded_mask
 
+
+
+class Soze_MultiImageBatch:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+            },
+            "optional": {
+                "images1": ("IMAGE",),
+                "images2": ("IMAGE",),
+                "images3": ("IMAGE",),
+                "images4": ("IMAGE",),
+                "images5": ("IMAGE",),
+                "images6": ("IMAGE",),
+                # Theoretically, an infinite number of image input parameters can be added.
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "multiImageBatch"
+    CATEGORY = "soze"
+
+    def _check_img_dims(self, tensors, names):
+        reference_dimensions = tensors[0].shape[1:]  # Ignore batch dimension
+        mismatched_images = [(names[i], tensors[i].shape[1:]) for i, tensor in enumerate(tensors) if tensor.shape[1:] != reference_dimensions]
+
+        if mismatched_images:
+            raise ValueError(f"Multi Image Batch Warning: Input image dimensions do not match. Reference dimensions: {reference_dimensions}. Mismatched images: {mismatched_images}")
+
+    def multiImageBatch(self, **kwargs):
+        batched_tensors = [kwargs[key] for key in kwargs if kwargs[key] is not None]
+        image_names = [key for key in kwargs if kwargs[key] is not None]
+
+        if not batched_tensors:
+            # Return an empty tensor if no valid images are provided
+            return (torch.empty(0, 3, 0, 0),)
+
+        # Normalize channels to 3 (RGB) by dropping alpha if present
+        for i in range(len(batched_tensors)):
+            if batched_tensors[i].shape[-1] == 4:
+                batched_tensors[i] = batched_tensors[i][..., :3]
+
+        self._check_img_dims(batched_tensors, image_names)
+        batched_tensors = torch.cat(batched_tensors, dim=0)
+        return (batched_tensors,)

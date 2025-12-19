@@ -1,6 +1,7 @@
 import requests
 import os
 import torch
+import time
 
 from PIL import Image
 from io import BytesIO
@@ -63,7 +64,6 @@ class Soze_ComfyDeployAPINode:
     def IS_CHANGED(self, *args, **kwargs):
         return True
 
-
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -110,12 +110,20 @@ class Soze_ComfyDeployAPINode:
             "deployment_id": deployment_id,
             "inputs": parameters
         }
-        response = requests.post(api_url, headers=headers, json=payload)
-        if response.status_code != 200:
-            raise Exception(f"API call failed: {response.status_code} {response.text}")
 
-        result = response.json()
-        return (result,)
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = requests.post(api_url, headers=headers, json=payload)
+                if response.status_code != 200:
+                    raise Exception(f"API call failed: {response.status_code} {response.text}")
+                result = response.json()
+                return (result,)
+            except Exception as e:
+                if attempt == max_retries:
+                    raise
+                print(f"API call failed (attempt {attempt}/{max_retries}): {e}. Retrying in 5 seconds...")
+                time.sleep(5)
 
 
 class Soze_ComfyDeployAPIStringParameters:
@@ -480,6 +488,12 @@ class Soze_ComfyDeployAPIImageParameters:
         param_string = ";".join(params)
 
         return (param_string,)
+    
+
+
+
+
+
 
 def load_api_key_from_env():
     """
@@ -490,3 +504,6 @@ def load_api_key_from_env():
     if not api_key:
         raise EnvironmentError("CD_API_KEY environment variable not set.")
     return api_key
+
+
+

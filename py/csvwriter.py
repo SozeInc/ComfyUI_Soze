@@ -57,13 +57,18 @@ class Soze_CSVWriter:
             
             
             # Append the line to the CSV file, creating it if it doesn't exist
-            try:
-                with open(csv_filename_path, 'a', newline='') as csvfile:
-                    csvfile.write(csv_line)
-                return csv_line
-            except Exception as e:
-                raise FileNotFoundError(f"CSV file not found: {csv_filename_path}")
-                return ""
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    with open(csv_filename_path, 'a', newline='', encoding='utf-8') as csvfile:
+                        csvfile.write(csv_line)
+                    return csv_line
+                except Exception as e:
+                    if attempt < retries - 1:
+                        time.sleep(5)
+                    else:
+                        raise FileNotFoundError(f"CSV file not found: {csv_filename_path}") from e
+            return ""
                 
         else:
             return ""
