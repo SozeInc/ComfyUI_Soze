@@ -1,4 +1,5 @@
 import os
+import time
 import folder_paths
 
 from .utils import (
@@ -78,6 +79,10 @@ class Soze_LoadFilesFromFolder:
 
 class Soze_FileLoader:
     @classmethod
+    def IS_CHANGED(self, *args, **kwargs):
+        return time.time()    
+
+    @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
@@ -97,3 +102,63 @@ class Soze_FileLoader:
         except Exception as e:
             print(f"Error reading file: {str(e)}")
             return ("",)
+
+
+
+class Soze_DoesFileExist:
+    @classmethod
+    def IS_CHANGED(self, *args, **kwargs):
+        return time.time()    
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "filepath": ("STRING", ),
+            }
+        }
+    RETURN_TYPES = ("BOOLEAN",)
+    FUNCTION = "does_exist"
+    CATEGORY = "Soze Nodes"
+    OUTPUT_NODE = False
+
+    def does_exist(self, filepath):
+        exists = os.path.isfile(filepath) and os.path.exists(filepath)
+        return (exists,)
+    
+    
+class Soze_LoadFilesWithPattern:
+    @classmethod
+    def IS_CHANGED(self, *args, **kwargs):
+        return time.time()    
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_folder": ("STRING", {"default": ""}),
+                "filename_pattern": ("STRING", {"default": ".*", "description": "Regex pattern to match filenames"}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "INT")
+    RETURN_NAMES = ("File_Path", "Load_Count")
+    FUNCTION = "load_file_with_pattern"
+    CATEGORY = "Soze Nodes"
+
+    def load_file_with_pattern(self, input_folder, filename_pattern):
+        import re
+
+        if not os.path.isdir(input_folder):
+            return ([], 0)
+
+        try:
+            dir_files = os.listdir(input_folder)
+            matched_files = [os.path.join(input_folder, f) for f in dir_files if re.search(filename_pattern, f)]
+        except Exception:
+            return ([], 0)
+
+        if not matched_files:
+            return ([], 0)
+
+        return (matched_files, len(matched_files), )

@@ -5,6 +5,8 @@ from typing import Dict, Any, List, Tuple, Optional, Iterator, Union
 import PIL.Image
 import numpy as np
 import torch
+import datetime
+import re
 from PIL import Image
 from torch import Tensor
 
@@ -99,3 +101,54 @@ if __name__ == "__main__":
 
     # Tests
     print(list(zip_with_fill([1], [4, 5, 6], [8])))
+
+
+
+def replace_date_placeholders(text):
+    now = datetime.datetime.now()
+    
+    def replace_match(match):
+        date_format = match.group(1)
+        # Replace custom format with strftime format
+        date_format = date_format.replace('yyyy', '%Y').replace('MM', '%m').replace('dd', '%d')
+        date_format = date_format.replace('hh', '%H').replace('mm', '%M').replace('ss', '%S')
+        return now.strftime(date_format)
+    
+    return re.sub(r'%date:([^%]+)%', replace_match, text)
+
+
+
+# Helper to remove non-ASCII characters from strings and from tuples of strings
+def _remove_non_ascii(s):
+    if s is None:
+        return s
+    if not isinstance(s, str):
+        return s
+    return ''.join(c for c in s if ord(c) < 128)
+
+def _sanitize_tuple(t):
+    if not isinstance(t, tuple):
+        return t
+    return tuple(_remove_non_ascii(x) if isinstance(x, str) else x for x in t)
+
+def _sanitize_filename(filename):
+    """
+    Removes characters that are invalid for filenames on Windows and Linux.
+    Invalid characters include: < > : " / \ | ? *
+    Also removes typical control characters.
+    """
+    if not isinstance(filename, str):
+        return filename
+    
+    # Define invalid characters pattern
+    # < > : " / \ | ? *  and control characters 0-31
+    invalid_chars_pattern = r'[<>:"/\\|?*\x00-\x1f]'
+    
+    # Replace invalid chars with nothing or underscore - let's use underscore for visibility
+    # sanitized = re.sub(invalid_chars_pattern, '', filename) # remove
+    # OR
+    sanitized = re.sub(invalid_chars_pattern, '', filename) # remove is safer for users' intent sometimes, but prevents collisions? 
+    # Let's remove them as per likely request "remove special characters"
+    
+    return sanitized
+

@@ -8,8 +8,8 @@ class Soze_CSVWriter:
         return {
             "required": {
                 "csv_filename_path": ("STRING", {"default": "","multiline": True}),
-                "value1": ("STRING", {"default": "", 'isInput': True }),
-                "value2": ("STRING", {"default": "", 'isInput': True }),
+                "value1": ("STRING", {"default": "", "forceInput": True }),
+                "value2": ("STRING", {"default": "", "forceInput": True }),
             },
             "optional": {
                 "value3": ("STRING", {"default": ""}),
@@ -35,6 +35,7 @@ class Soze_CSVWriter:
         return time.time()
     
     def wrap_quotes(self, value):
+        value = value.replace('"', "'")
         return f'"{value}"'
 
     def write_csv(self, csv_filename_path, value1="", value2="", value3="", value4="", value5="", value6="", value7="", value8="", value9="", value10=""):

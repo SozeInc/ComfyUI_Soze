@@ -5,7 +5,10 @@ import numpy as np
 import hashlib
 import re
 import requests
+import json
 from numpy import ndarray
+from comfy.cli_args import args
+from PIL.PngImagePlugin import PngInfo
 
 from typing import Tuple, List, Dict, Any, Optional
 
@@ -271,23 +274,26 @@ class Soze_LoadImagesFromFolder:
         # Return a value that changes each time to force re-execution
         return float("NaN")
 
-class Soze_LoadImagesFromFilepath:
+class Soze_LoadImageFromFilepath:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "Image_Filepath": ("STRING", {"default": ""}),
+                "Return_None_If_Not_Found": ("BOOLEAN", {"default": False, "tooltip": "If enabled, will return empty outputs instead of erroring if the file is not found."}),
             },
         }
 
     RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING", "BOOL")
     RETURN_NAMES = ("Image", "Mask", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Image_Changed")
-    FUNCTION = "load_images_from_filepath"
+    FUNCTION = "load_image_from_filepath"
 
     CATEGORY = "image"
     
-    def load_images_from_filepath(self, Image_Filepath):
-        if not os.path.isfile(Image_Filepath):
+    def load_image_from_filepath(self, Image_Filepath, Return_None_If_Not_Found=False):
+        if not os.path.isfile(Image_Filepath) and not os.path.exists(Image_Filepath):
+            if Return_None_If_Not_Found:
+                return (None, None, "", "", "", "", False)
             raise FileNotFoundError(f"File not found: {Image_Filepath}")
 
         input_filepath = folder_paths.get_annotated_filepath(Image_Filepath)
@@ -331,7 +337,6 @@ class Soze_LoadImagesFromFilepath:
             output_image = output_images[0]
             output_mask = output_masks[0]
 
-        # Return similar tuple as Soze_LoadImagesFromFolder for consistency
         return (output_image, output_mask, os.path.dirname(input_filepath), input_filepath, input_filename, input_filename_no_ext, False)
 
 
@@ -1493,3 +1498,105 @@ class Soze_MultiImageBatch:
         self._check_img_dims(batched_tensors, image_names)
         batched_tensors = torch.cat(batched_tensors, dim=0)
         return (batched_tensors,)
+
+
+
+class Soze_ImageSizeWithMaximum:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE", {}),
+                "max_long_edge": ("INT", {"default": 1280, "min": 64, "max": 8192, "step": 64}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("width", "height")
+
+    FUNCTION = "check_size"
+    CATEGORY = "soze"
+
+    def check_size(self, image, max_long_edge):
+        if image is None:
+            return (False, 0, 0)
+        
+        height, width = image.shape[1], image.shape[2]
+        is_within_size = (height <= max_long_edge) and (width <= max_long_edge)
+        
+        target_width = width
+        target_height = height
+        
+        if not is_within_size:
+            aspect_ratio = width / height
+            if width > height:
+                target_width = max_long_edge
+                target_height = int(max_long_edge / aspect_ratio)
+            else:
+                target_height = max_long_edge
+                target_width = int(max_long_edge * aspect_ratio)
+                
+        return (target_width, target_height)
+    
+    
+class Soze_SaveImageWithAbsoluteFilename:
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
+        self.prefix_append = ""
+        self.compress_level = 4
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip": "The images to save."}),
+                "filename_prefix": ("STRING", {"default": "ComfyUI", "tooltip": "The prefix for the file to save. This may include formatting information such as %date:yyyy-MM-dd% or %Empty Latent Image.width% to include values from nodes."})
+            },
+            "hidden": {
+                "prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_images"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "image"
+    DESCRIPTION = "Saves the input images to your ComfyUI output directory."
+
+    def save_images(self, images, filename_prefix="ComfyUI", prompt=None, extra_pnginfo=None):
+        if images is None:
+            return()
+        filename_prefix += self.prefix_append
+        full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
+        results = list()
+        for (batch_number, image) in enumerate(images):
+            i = 255. * image.cpu().numpy()
+            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+            metadata = None
+            if not args.disable_metadata:
+                metadata = PngInfo()
+                if prompt is not None:
+                    metadata.add_text("prompt", json.dumps(prompt))
+                if extra_pnginfo is not None:
+                    for x in extra_pnginfo:
+                        metadata.add_text(x, json.dumps(extra_pnginfo[x]))
+
+            filename_with_batch_num = filename.replace("%batch_num%", str(batch_number))
+            if len(images) == 1:
+                 file = f"{filename_with_batch_num}.png"
+            else:
+                file = f"{filename_with_batch_num}_{counter:05}_.png"
+            img.save(os.path.join(full_output_folder, file), pnginfo=metadata, compress_level=self.compress_level)
+            results.append({
+                "filename": file,
+                "subfolder": subfolder,
+                "type": self.type
+            })
+            counter += 1
+
+        return { "ui": { "images": results } }
+
+
