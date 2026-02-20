@@ -1,7 +1,7 @@
 [project]
 name = "comfyui_soze"
 description = "Soze Nodes: Quality of Life, Batch Processing and Useful Abandoned Repo Nodes"
-version = "1.8.0"
+version = "1.8.1"
 license = { text = "MIT License" }
 dependencies = ["requests","torch","Pillow","numpy","collections","matplotlib"]
 
