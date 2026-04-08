@@ -13,7 +13,7 @@ import traceback
 from .py.csvreader import Soze_CSVReader, Soze_CSVReaderXCheckpoint, Soze_CSVReaderXLora
 from .py.csvwriter import Soze_CSVWriter
 from .py.xy import Soze_UnzippedProductAny
-#from .py.promptxlora import Soze_PromptXLora
+from .py.promptxlora import Soze_PromptFileFromFolderXLora
 from .py.lorafileloader import Soze_LoraFilePathLoader
 from .py.ckptfileloader import Soze_CheckpointFilePathLoader
 from .py.comfydeploy import (
@@ -214,6 +214,7 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Does File Exist": Soze_DoesFileExist,
                         "Load Files With Pattern": Soze_LoadFilesWithPattern,
                         
+                        "Load Prompt From Folder X Lora": Soze_PromptFileFromFolderXLora,
                         
                         
                         # "SAM Audio Text Prompt": Soze_SAMAudioTextPrompt,
@@ -319,7 +320,7 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Load Files With Pattern": "Load Files With Pattern (Soze)",
                                 
                                 
-                                
+                                "Load Prompt From Folder X Lora": "Load Prompt From Folder X Lora (Soze)",
                                 
                                 # "SAM Audio Text Prompt": "SAM Audio Text Prompt (Soze)",
                                 
