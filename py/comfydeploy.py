@@ -1,18 +1,21 @@
-from email.mime import image
-import requests
+import logging
 import os
-import torch
 import time
-import folder_paths
-import comfy.model_management
-
-from PIL import Image, ImageOps
 from io import BytesIO
-from azure.storage.blob import BlobServiceClient
+
+import comfy.model_management
+import folder_paths
 import numpy as np
-from PIL import Image
+import requests
+import torch
+from azure.storage.blob import BlobServiceClient
+from PIL import Image, ImageOps
 from server import PromptServer
-from .images import pil2tensor
+
+logger = logging.getLogger(__name__)
+
+HTTP_TIMEOUT = (10, 120)  # (connect, read) seconds
+DOWNLOAD_TIMEOUT = (10, 600)
 
 
 def upload_to_azure_storage(image):
@@ -55,7 +58,7 @@ def upload_to_azure_storage(image):
     blob_service_client = BlobServiceClient.from_connection_string(connection_string)
     container_client = blob_service_client.get_container_client(container_name)
     container_client.upload_blob(name=blob_name, data=img_bytes, overwrite=True)
-    print(f"Uploaded image to {container_name}/{blob_name}")
+    logger.info("Uploaded image to %s/%s", container_name, blob_name)
 
     # Construct public URL (assuming container is set for public access)
     # Try to extract storage account name from connection string
@@ -121,7 +124,7 @@ class Soze_ComfyDeployAPINode:
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
-                response = requests.post(api_url, headers=headers, json=payload)
+                response = requests.post(api_url, headers=headers, json=payload, timeout=HTTP_TIMEOUT)
                 if response.status_code != 200:
                     raise Exception(f"API call failed: {response.status_code} {response.text}")
                 result = response.json()
@@ -129,7 +132,7 @@ class Soze_ComfyDeployAPINode:
             except Exception as e:
                 if attempt == max_retries:
                     raise
-                print(f"API call failed (attempt {attempt}/{max_retries}): {e}. Retrying in 5 seconds...")
+                logger.warning("API call failed (attempt %d/%d): %s. Retrying in 5 seconds...", attempt, max_retries, e)
                 time.sleep(5)
 
 
@@ -667,9 +670,9 @@ class Soze_ComfyDeployCacheAPIRunIDs:
             else:
                 # Fallback for older versions: use standard user directory
                 user_dir = os.path.join(folder_paths.user_directory, user_id)
-                print(f"Warning: get_public_user_directory not found. Using {user_dir}")
+                logger.warning("get_public_user_directory not found. Using %s", user_dir)
         except Exception as e:
-            print(f"Error resolving user directory: {e}")
+            logger.error("Error resolving user directory: %s", e)
             user_dir = folder_paths.get_output_directory() # Safe fallback
 
         run_id_cache_folder = os.path.join(user_dir, "RunIDCache")
@@ -726,9 +729,9 @@ class Soze_ComfyDeployCachedAPIRunInfo:
             else:
                 # Fallback for older versions: use standard user directory
                 user_dir = os.path.join(folder_paths.user_directory, user_id)
-                print(f"Warning: get_public_user_directory not found. Using {user_dir}")
+                logger.warning("get_public_user_directory not found. Using %s", user_dir)
         except Exception as e:
-            print(f"Error resolving user directory: {e}")
+            logger.error("Error resolving user directory: %s", e)
             user_dir = folder_paths.get_output_directory() # Safe fallback
 
         run_id_cache_folder = os.path.join(user_dir, "RunIDCache")
@@ -789,9 +792,9 @@ class Soze_ComfyDeployRetrieveCachedAPIRunIDs:
             else:
                 # Fallback for older versions: use standard user directory
                 user_dir = os.path.join(folder_paths.user_directory, user_id)
-                print(f"Warning: get_public_user_directory not found. Using {user_dir}")
+                logger.warning("get_public_user_directory not found. Using %s", user_dir)
         except Exception as e:
-            print(f"Error resolving user directory: {e}")
+            logger.error("Error resolving user directory: %s", e)
             user_dir = folder_paths.get_output_directory() # Safe fallback
 
         run_id_cache_folder = os.path.join(user_dir, "RunIDCache")
@@ -816,7 +819,7 @@ class Soze_ComfyDeployRetrieveCachedAPIRunIDs:
                             try:
                                 os.rename(cache_file_path, removed_file_path)
                             except Exception as e:
-                                print(f"Error removing cached file: {e}")
+                                logger.error("Error removing cached file: %s", e)
                     break
 
         if run_id == "":
@@ -866,9 +869,9 @@ class Soze_ComfyDeployClearCachedAPIRunIDs:
             else:
                 # Fallback for older versions: use standard user directory
                 user_dir = os.path.join(folder_paths.user_directory, user_id)
-                print(f"Warning: get_public_user_directory not found. Using {user_dir}")
+                logger.warning("get_public_user_directory not found. Using %s", user_dir)
         except Exception as e:
-            print(f"Error resolving user directory: {e}")
+            logger.error("Error resolving user directory: %s", e)
             user_dir = folder_paths.get_output_directory() # Safe fallback
 
         run_id_cache_folder = os.path.join(user_dir, "RunIDCache")
@@ -893,7 +896,7 @@ class Soze_ComfyDeployClearCachedAPIRunIDs:
                             try:
                                 os.rename(cache_file_path, removed_file_path)
                             except Exception as e:
-                                print(f"Error removing cached file: {e}")
+                                logger.error("Error removing cached file: %s", e)
                     break
 
         if run_id == "":
@@ -960,7 +963,7 @@ class Soze_ComfyDeployDownloadAPIFiles:
         start_time = time.time()
         send_status("Checking status...")
         while True:
-            response = requests.get(f"{api_url}/{run_id}", headers=headers)
+            response = requests.get(f"{api_url}/{run_id}", headers=headers, timeout=HTTP_TIMEOUT)
             if response.status_code != 200:
                 send_status(f"API Error: {response.status_code}")
                 raise Exception(f"API call failed: {response.status_code} {response.text}")
@@ -1100,7 +1103,7 @@ class Soze_ComfyDeployDownloadAPIFiles:
                         
                         for attempt in range(3):
                             try:
-                                with requests.get(file_url, stream=True) as r:
+                                with requests.get(file_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
                                     r.raise_for_status()
                                     with open(local_path, 'wb') as f:
                                         for chunk in r.iter_content(chunk_size=8192):
@@ -1110,7 +1113,7 @@ class Soze_ComfyDeployDownloadAPIFiles:
                                 if attempt == 2:
                                     send_status(f"Download failed: {filename}")
                                     raise
-                                print(f"Download failed (attempt {attempt+1}/3): {e}. Retrying...")
+                                logger.warning("Download failed (attempt %d/3): %s. Retrying...", attempt + 1, e)
                                 time.sleep(2)
 
                         local_filepaths.append(local_path)
@@ -1125,7 +1128,7 @@ class Soze_ComfyDeployDownloadAPIFiles:
                         path = url_to_local_path.get(img_source, img_source)
                         
                         if path.startswith("http"):
-                             response = requests.get(path)
+                             response = requests.get(path, timeout=DOWNLOAD_TIMEOUT)
                              i = Image.open(BytesIO(response.content))
                         else:
                              i = Image.open(path)
@@ -1138,7 +1141,7 @@ class Soze_ComfyDeployDownloadAPIFiles:
                         image = torch.from_numpy(image)[None,]
                         out_images.append(image)
                     except Exception as e:
-                        print(f"Failed to load image {img_source}: {e}")
+                        logger.error("Failed to load image %s: %s", img_source, e)
 
                 if out_images:
                     out_images_tensor = torch.cat(out_images, dim=0)
@@ -1164,7 +1167,7 @@ class Soze_ComfyDeployDownloadAPIFiles:
             else:
                 remaining = int(wait_max_seconds - (time.time() - start_time))
                 send_status(f"Status: {status}. Remaining: {remaining}s")
-                print(f"Run status: {status}. Waiting...")
+                logger.info("Run status: %s. Waiting...", status)
                 comfy.model_management.throw_exception_if_processing_interrupted()
                 time.sleep(5)
 

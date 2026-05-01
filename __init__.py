@@ -57,13 +57,12 @@ from .py.range_nodes import (
     Soze_IntNumStepsRangeNode,
     Soze_FloatNumStepsRangeNode)
 
-# from .py.imageresize import Soze_ImageResizeWithAspectCorrection
-
 from .py.files import (
-    Soze_LoadFilesFromFolder, 
-    Soze_FileLoader, 
+    Soze_LoadFilesFromFolder,
+    Soze_FileLoader,
     Soze_DoesFileExist,
     Soze_LoadFilesWithPattern,
+    Soze_DownloadURL,
     )
 
 from .py.json import (
@@ -98,9 +97,12 @@ from .py.images import (
     Soze_ImageSizeWithMaximum,
     Soze_SaveImageWithAbsoluteFilename
 )
-# from .py.samaudio import Soze_SAMAudioTextPrompt
 
-from .py.fal import Veo31RefImgVideoNode
+from .py.fal import (
+    Soze_FALSeedance2ImageToVideo,
+    Soze_FALSeedance2ReferenceToVideo,
+    Veo31RefImgVideoNode,
+)
 
 from .py.converters import (
     Soze_IntToString,
@@ -182,7 +184,6 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Create Image Batch From JSON Array": Soze_CreateImageBatchFromJSONArray,
                         "Load Image From Filepath": Soze_LoadImageFromFilepath,
                         "Load Images From JSONArray": Soze_LoadImagesFromJSONArray,
-                        # "Image Resize With Aspect Correction": Soze_ImageResizeWithAspectCorrection,
                         "Multi Image Batch": Soze_MultiImageBatch,
                         "Load Text From File": Soze_LoadTextFromFile,
                         "Load Random Line From Text File": Soze_LoadRandomLineFromTextFile,
@@ -190,6 +191,8 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Empty String Replacement": Soze_EmptyStringReplacement,
                         "Save Text File To Output": Soze_SaveTextFileToOutput,
                         "Veo31 RefImg Video Node": Veo31RefImgVideoNode,
+                        "FAL Seedance 2 Image To Video": Soze_FALSeedance2ImageToVideo,
+                        "FAL Seedance 2 Reference To Video": Soze_FALSeedance2ReferenceToVideo,
                         
                         #Converters
                         "Int To String": Soze_IntToString,
@@ -213,11 +216,9 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         #Files
                         "Does File Exist": Soze_DoesFileExist,
                         "Load Files With Pattern": Soze_LoadFilesWithPattern,
+                        "Download URL": Soze_DownloadURL,
                         
                         "Load Prompt From Folder X Lora": Soze_PromptFileFromFolderXLora,
-                        
-                        
-                        # "SAM Audio Text Prompt": Soze_SAMAudioTextPrompt,
                         }
 
 NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
@@ -287,7 +288,6 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Create Image Batch From JSON Array": "Create Image Batch From JSON Array (Soze)",
                                 "Load Image From Filepath": "Load Image From Filepath (Soze)",
                                 "Load Images From JSONArray": "Load Images From JSONArray (Soze)",
-                                # "Image Resize With Aspect Correction": "Image Resize With Aspect Correction (Soze)",
                                 "Multi Image Batch": "Multi Image Batch (Soze)",
                                 "Load Text From File": "Load Text From File (Soze)",
                                 "Load Random Line From Text File": "Load Random Line From Text File (Soze)",
@@ -295,6 +295,8 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Empty String Replacement": "Empty String Replacement (Soze)",
                                 "Save Text File To Output": "Save Text File To Output (Soze)",
                                 "Veo31 RefImg Video Node": "Veo31 RefImg Video Node (Soze)",
+                                "FAL Seedance 2 Image To Video": "FAL Seedance 2 Image To Video (Soze)",
+                                "FAL Seedance 2 Reference To Video": "FAL Seedance 2 Reference To Video (Soze)",
                                 
                                 #Converters
                                 "Int To String": "Int To String (Soze)",
@@ -318,12 +320,10 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 #Files
                                 "Does File Exist": "Does File Exist (Soze)",
                                 "Load Files With Pattern": "Load Files With Pattern (Soze)",
+                                "Download URL": "Download URL (Soze)",
                                 
                                 
                                 "Load Prompt From Folder X Lora": "Load Prompt From Folder X Lora (Soze)",
-                                
-                                # "SAM Audio Text Prompt": "SAM Audio Text Prompt (Soze)",
-                                
                               }
 
 WEB_DIRECTORY = "js"

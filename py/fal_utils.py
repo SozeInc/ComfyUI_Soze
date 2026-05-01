@@ -1,5 +1,6 @@
 import configparser
 import io
+import logging
 import os
 import tempfile
 
@@ -8,6 +9,10 @@ import requests
 import torch
 from fal_client.client import SyncClient
 from PIL import Image
+
+logger = logging.getLogger(__name__)
+
+HTTP_TIMEOUT = (10, 120)
 
 
 class FalConfig:
@@ -32,35 +37,38 @@ class FalConfig:
         config = configparser.ConfigParser()
         config.read(config_path)
 
-        try:
-            if os.environ.get("FAL_KEY") is not None:
-                print("FAL_KEY found in environment variables")
-                self._key = os.environ["FAL_KEY"]
-            else:
-                print("FAL_KEY not found in environment variables")
+        env_key = os.environ.get("FAL_KEY")
+        if env_key:
+            logger.info("FAL_KEY found in environment variables")
+            self._key = env_key
+        else:
+            try:
                 self._key = config["API"]["FAL_KEY"]
-                print("FAL_KEY found in config.ini")
-                os.environ["FAL_KEY"] = self._key
-                print("FAL_KEY set in environment variables")
+                logger.info("FAL_KEY found in config.ini")
+            except KeyError:
+                logger.error("FAL_KEY not found in config.ini or environment variables")
+                self._key = None
+                return
 
-            # Check if FAL key is the default placeholder
-            if self._key == "<your_fal_api_key_here>":
-                print("WARNING: You are using the default FAL API key placeholder!")
-                print("Please set your actual FAL API key in either:")
-                print("1. The config.ini file under [API] section")
-                print("2. Or as an environment variable named FAL_KEY")
-                print("Get your API key from: https://fal.ai/dashboard/keys")
-        except KeyError:
-            print("Error: FAL_KEY not found in config.ini or environment variables")
+        if self._key == "<your_fal_api_key_here>":
+            logger.warning(
+                "Default FAL API key placeholder detected. "
+                "Set FAL_KEY in environment or in config.ini under [API]. "
+                "Get a key at https://fal.ai/dashboard/keys"
+            )
+            self._key = None
 
     def get_client(self):
         """Get or create the FAL client."""
+        if self._key is None:
+            raise RuntimeError(
+                "FAL_KEY is not configured. Set FAL_KEY in environment or config.ini."
+            )
         if self._client is None:
             self._client = SyncClient(key=self._key)
         return self._client
 
     def get_key(self):
-        """Get the FAL API key."""
         return self._key
 
 
@@ -69,79 +77,153 @@ class ImageUtils:
 
     @staticmethod
     def tensor_to_pil(image):
-        """Convert image tensor to PIL Image."""
         try:
-            # Convert the image tensor to a numpy array
             if isinstance(image, torch.Tensor):
                 image_np = image.cpu().numpy()
             else:
                 image_np = np.array(image)
 
-            # Ensure the image is in the correct format (H, W, C)
             if image_np.ndim == 4:
-                image_np = image_np.squeeze(0)  # Remove batch dimension if present
+                image_np = image_np.squeeze(0)
             if image_np.ndim == 2:
-                image_np = np.stack([image_np] * 3, axis=-1)  # Convert grayscale to RGB
+                image_np = np.stack([image_np] * 3, axis=-1)
             elif image_np.shape[0] == 3:
-                image_np = np.transpose(
-                    image_np, (1, 2, 0)
-                )  # Change from (C, H, W) to (H, W, C)
+                image_np = np.transpose(image_np, (1, 2, 0))
 
-            # Normalize the image data to 0-255 range
             if image_np.dtype == np.float32 or image_np.dtype == np.float64:
                 image_np = (image_np * 255).astype(np.uint8)
 
-            # Convert to PIL Image
             return Image.fromarray(image_np)
         except Exception as e:
-            print(f"Error converting tensor to PIL: {str(e)}")
+            logger.error("Error converting tensor to PIL: %s", e)
             return None
 
     @staticmethod
     def upload_image(image):
         """Upload image tensor to FAL and return URL."""
+        if image is None:
+            return None
+        pil_image = ImageUtils.tensor_to_pil(image)
+        if pil_image is None:
+            return None
+
+        # Save the image to a temporary file (delete=False so we control cleanup
+        # after the FAL upload finishes; Windows cannot reopen an open temp file).
+        fd, temp_file_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
         try:
-            pil_image = ImageUtils.tensor_to_pil(image)
-            if not pil_image:
-                return None
-
-            # Save the image to a temporary file
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
-                pil_image.save(temp_file, format="PNG")
-                temp_file_path = temp_file.name
-
-            # Upload the temporary file
+            pil_image.save(temp_file_path, format="PNG")
             client = FalConfig().get_client()
-            image_url = client.upload_file(temp_file_path)
-            return image_url
+            return client.upload_file(temp_file_path)
         except Exception as e:
-            print(f"Error uploading image: {str(e)}")
+            logger.error("Error uploading image: %s", e)
             return None
         finally:
-            # Clean up the temporary file
-            if "temp_file_path" in locals():
+            try:
                 os.unlink(temp_file_path)
-                
+            except OSError:
+                pass
+
     @staticmethod
     def upload_file(file_path):
-        """Upload a file to FAL and return URL."""
+        if not file_path:
+            return None
         try:
             client = FalConfig().get_client()
-            file_url = client.upload_file(file_path)
-            return file_url
+            return client.upload_file(file_path)
         except Exception as e:
-            print(f"Error uploading file: {str(e)}")
+            logger.error("Error uploading file: %s", e)
             return None
-        
+
+    @staticmethod
+    def upload_audio(audio, suffix: str = ".wav"):
+        """Upload a ComfyUI AUDIO dict ({waveform, sample_rate}) to FAL.
+
+        Saves to a temp WAV via torchaudio, uploads, returns the FAL URL or None.
+        """
+        if audio is None:
+            return None
+        try:
+            import torchaudio  # local import: torchaudio is heavy and only needed here
+        except ImportError as e:
+            logger.error("torchaudio is required to upload AUDIO inputs: %s", e)
+            return None
+
+        try:
+            waveform = audio["waveform"]
+            sample_rate = int(audio["sample_rate"])
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error("Unsupported AUDIO payload: %s", e)
+            return None
+
+        # Comfy AUDIO is [B, C, S]; torchaudio.save expects [C, S].
+        if waveform.dim() == 3:
+            waveform = waveform[0]
+
+        fd, temp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        try:
+            torchaudio.save(temp_path, waveform.cpu(), sample_rate)
+            return FalConfig().get_client().upload_file(temp_path)
+        except Exception as e:
+            logger.error("Error uploading audio: %s", e)
+            return None
+        finally:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+    @staticmethod
+    def upload_video(video, suffix: str = ".mp4"):
+        """Upload a ComfyUI VIDEO object to FAL.
+
+        Uses VideoInput.save_to() to materialize the video to a temp file, then
+        uploads via the FAL client. Returns the URL or None on failure.
+        """
+        if video is None:
+            return None
+
+        # Fast path: VideoFromFile exposes the underlying path; reuse it directly.
+        existing_path = None
+        for attr in ("_VideoFromFile__file", "file", "path", "_path"):
+            candidate = getattr(video, attr, None)
+            if isinstance(candidate, str) and os.path.isfile(candidate):
+                existing_path = candidate
+                break
+
+        if existing_path is not None:
+            try:
+                return FalConfig().get_client().upload_file(existing_path)
+            except Exception as e:
+                logger.error("Error uploading video (direct path): %s", e)
+                return None
+
+        if not hasattr(video, "save_to"):
+            logger.error("Unsupported VIDEO object (no save_to): %r", type(video))
+            return None
+
+        fd, temp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        try:
+            video.save_to(temp_path)
+            return FalConfig().get_client().upload_file(temp_path)
+        except Exception as e:
+            logger.error("Error uploading video: %s", e)
+            return None
+        finally:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
     @staticmethod
     def mask_to_image(mask):
-        """Convert mask tensor to image tensor."""
-        result = (
+        return (
             mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))
             .movedim(1, -1)
             .expand(-1, -1, -1, 3)
         )
-        return result
 
 
 class ResultProcessor:
@@ -149,53 +231,38 @@ class ResultProcessor:
 
     @staticmethod
     def process_image_result(result):
-        """Process image generation result and return tensor."""
         try:
             images = []
             for img_info in result["images"]:
                 img_url = img_info["url"]
-                img_response = requests.get(img_url)
+                img_response = requests.get(img_url, timeout=HTTP_TIMEOUT)
                 img = Image.open(io.BytesIO(img_response.content))
-                img_array = np.array(img).astype(np.float32) / 255.0
-                images.append(img_array)
+                images.append(np.array(img).astype(np.float32) / 255.0)
 
-            # Stack the images along a new first dimension
             stacked_images = np.stack(images, axis=0)
-
-            # Convert to PyTorch tensor
-            img_tensor = torch.from_numpy(stacked_images)
-
-            return (img_tensor,)
+            return (torch.from_numpy(stacked_images),)
         except Exception as e:
-            print(f"Error processing image result: {str(e)}")
+            logger.error("Error processing image result: %s", e)
             return ResultProcessor.create_blank_image()
 
     @staticmethod
     def process_single_image_result(result):
-        """Process single image result and return tensor."""
         try:
             img_url = result["image"]["url"]
-            img_response = requests.get(img_url)
+            img_response = requests.get(img_url, timeout=HTTP_TIMEOUT)
             img = Image.open(io.BytesIO(img_response.content))
             img_array = np.array(img).astype(np.float32) / 255.0
-
-            # Stack the images along a new first dimension
             stacked_images = np.stack([img_array], axis=0)
-
-            # Convert to PyTorch tensor
-            img_tensor = torch.from_numpy(stacked_images)
-            return (img_tensor,)
+            return (torch.from_numpy(stacked_images),)
         except Exception as e:
-            print(f"Error processing single image result: {str(e)}")
+            logger.error("Error processing single image result: %s", e)
             return ResultProcessor.create_blank_image()
 
     @staticmethod
     def create_blank_image():
-        """Create a blank black image tensor."""
         blank_img = Image.new("RGB", (512, 512), color="black")
         img_array = np.array(blank_img).astype(np.float32) / 255.0
-        img_tensor = torch.from_numpy(img_array)[None,]
-        return (img_tensor,)
+        return (torch.from_numpy(img_array)[None,],)
 
 
 class ApiHandler:
@@ -203,29 +270,25 @@ class ApiHandler:
 
     @staticmethod
     def submit_and_get_result(endpoint, arguments):
-        """Submit job to FAL API and get result."""
         try:
             client = FalConfig().get_client()
             handler = client.submit(endpoint, arguments=arguments)
             return handler.get()
         except Exception as e:
-            print(f"Error submitting to {endpoint}: {str(e)}")
-            raise e
+            logger.error("Error submitting to %s: %s", endpoint, e)
+            raise
 
     @staticmethod
     def handle_video_generation_error(model_name, error):
-        """Handle video generation errors consistently."""
-        print(f"Error generating video with {model_name}: {str(error)}")
+        logger.error("Error generating video with %s: %s", model_name, error)
         return ("Error: Unable to generate video.",)
 
     @staticmethod
     def handle_image_generation_error(model_name, error):
-        """Handle image generation errors consistently."""
-        print(f"Error generating image with {model_name}: {str(error)}")
+        logger.error("Error generating image with %s: %s", model_name, error)
         return ResultProcessor.create_blank_image()
 
     @staticmethod
     def handle_text_generation_error(model_name, error):
-        """Handle text generation errors consistently."""
-        print(f"Error generating text with {model_name}: {str(error)}")
+        logger.error("Error generating text with %s: %s", model_name, error)
         return ("Error: Unable to generate text.",)

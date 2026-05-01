@@ -1,3 +1,4 @@
+requests
 torch
 Pillow
 numpy
@@ -6,4 +7,3 @@ azure-storage-blob
 torchaudio
 fal-client
 moviepy>=1.0.3
-git+https://github.com/facebookresearch/sam-audio.git

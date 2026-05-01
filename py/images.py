@@ -1046,7 +1046,6 @@ class Soze_EmptyImages:
                 30 + (split_idx * 75) % 200,
                 10 + (split_idx * 105) % 200,
             )
-            print(f"Splits: {split} | Base Color: {base_color}")
 
             for _ in range(split):
                 batch_tensor = torch.zeros(batch_size[0], 512, 512, 3)

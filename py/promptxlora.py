@@ -92,8 +92,20 @@ class Soze_PromptFileFromFolderXLora:
         )
 
     @classmethod
-    def IS_CHANGED(cls, *args, **kwargs):
-        # Return a value that changes each time to force re-execution
-        return float("NaN")
-    
+    def IS_CHANGED(cls, input_folder, start_lora_name, lora_count, index=0):
+        try:
+            entries = sorted(
+                f for f in os.listdir(input_folder) if f.lower().endswith('.txt')
+            )
+        except OSError as e:
+            return f"err:{input_folder}:{e}"
+        parts = []
+        for name in entries:
+            try:
+                st = os.stat(os.path.join(input_folder, name))
+                parts.append(f"{name}:{st.st_mtime_ns}:{st.st_size}")
+            except OSError:
+                parts.append(f"{name}:?")
+        return f"{input_folder}|{'|'.join(parts)}|{start_lora_name}|{lora_count}|{index}"
+
 

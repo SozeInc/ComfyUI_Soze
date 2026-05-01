@@ -81,7 +81,8 @@ def write_to_file(writefilename, writecontent):
             writecontent = str(writecontent)
             file.write(writecontent)
     except IOError:
-        print("An error occurred while writing to " + writefilename)
+        import logging
+        logging.getLogger(__name__).error("An error occurred while writing to %s", writefilename)
 
 
 
