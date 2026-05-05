@@ -1,46 +1,11 @@
 import logging
-from datetime import datetime
 
 from comfy_api_nodes.util import download_url_to_video_output
 
 from .fal_utils import ApiHandler, ImageUtils
+from .status_utils import EventLog, push_node_status, finalize_status
 
 logger = logging.getLogger(__name__)
-
-
-class _EventLog:
-    """Accumulates timestamped events during a node run so the final status
-    output can include a full transcript of what happened."""
-
-    def __init__(self):
-        self.events: list[str] = []
-
-    def add(self, text: str) -> None:
-        ts = datetime.now().strftime("%H:%M:%S")
-        self.events.append(f"[{ts}] {text}")
-
-    def render(self) -> str:
-        return "\n".join(self.events)
-
-
-def _push_node_status(unique_id, text: str, event_log: _EventLog | None = None) -> None:
-    """Push a status string to the node body widget (the area native API nodes use)
-    and append it to the run's event log. Silently no-ops on the widget side if
-    the running ComfyUI doesn't expose the API."""
-    if event_log is not None:
-        event_log.add(text)
-    if unique_id is None:
-        return
-    try:
-        from server import PromptServer
-        server = PromptServer.instance
-        if hasattr(server, "send_progress_text"):
-            server.send_progress_text(text, unique_id)
-        else:
-            server.send_sync("progress_text", {"node_id": unique_id, "text": text})
-    except Exception:
-        # Status display is best-effort — never let it break the node.
-        logger.debug("Failed to push node status for %s", unique_id, exc_info=True)
 
 
 def _build_config_string(speed: str, resolution: str, duration: str, aspect_ratio: str, generate_audio: bool) -> str:
@@ -51,14 +16,6 @@ def _build_config_string(speed: str, resolution: str, duration: str, aspect_rati
     ar_tag = "Auto" if aspect_ratio == "auto" or not aspect_ratio else aspect_ratio.replace(":", "")
     audio_tag = "Audio" if generate_audio else "NoAudio"
     return f"{speed_tag}-{res_tag}-{dur_tag}-{ar_tag}-{audio_tag}"
-
-
-def _finalize_status(headline: str, event_log: _EventLog) -> str:
-    """Combine a one-line headline with the full event log for the status output."""
-    log_section = event_log.render()
-    if log_section:
-        return f"{headline}\n\nEvents:\n{log_section}"
-    return headline
 
 
 # ---------------------------------------------------------------------------
@@ -114,38 +71,38 @@ def _build_common_args(prompt, resolution, duration, aspect_ratio, generate_audi
     return args
 
 
-async def _call_seedance(endpoint: str, arguments: dict, unique_id=None, event_log: _EventLog | None = None):
+async def _call_seedance(endpoint: str, arguments: dict, unique_id=None, event_log: EventLog | None = None):
     if event_log is None:
-        event_log = _EventLog()
-    _push_node_status(unique_id, f"Submitting to {endpoint}...", event_log)
+        event_log = EventLog()
+    push_node_status(unique_id, f"Submitting to {endpoint}...", event_log)
     try:
         result = ApiHandler.submit_and_get_result(endpoint, arguments)
     except Exception as e:
         logger.exception("Seedance 2 generation failed (endpoint=%s)", endpoint)
         headline = f"ERROR ({endpoint}): {e!r}"
-        _push_node_status(unique_id, headline, event_log)
-        return (None, "", _finalize_status(headline, event_log))
+        push_node_status(unique_id, headline, event_log)
+        return (None, "", finalize_status(headline, event_log))
 
     video_info = result.get("video") or {}
     video_url = video_info.get("url")
     if not video_url:
         headline = f"ERROR ({endpoint}): API did not return a video URL. Response: {result!r}"
-        _push_node_status(unique_id, headline, event_log)
-        return (None, "", _finalize_status(headline, event_log))
+        push_node_status(unique_id, headline, event_log)
+        return (None, "", finalize_status(headline, event_log))
 
     seed_used = int(result.get("seed", 0) or 0)
     logger.info("Seedance 2 (%s) video URL: %s (seed=%s)", endpoint, video_url, seed_used)
-    _push_node_status(unique_id, f"Downloading video (seed={seed_used})...", event_log)
+    push_node_status(unique_id, f"Downloading video (seed={seed_used})...", event_log)
     try:
         video = await download_url_to_video_output(video_url)
     except Exception as e:
         logger.exception("Seedance 2 video download failed (url=%s)", video_url)
         headline = f"ERROR downloading video ({endpoint}): {e!r}"
-        _push_node_status(unique_id, headline, event_log)
-        return (None, video_url, _finalize_status(headline, event_log))
+        push_node_status(unique_id, headline, event_log)
+        return (None, video_url, finalize_status(headline, event_log))
     headline = f"OK ({endpoint}): seed={seed_used}, url={video_url}"
-    _push_node_status(unique_id, headline, event_log)
-    return (video, video_url, _finalize_status(headline, event_log))
+    push_node_status(unique_id, headline, event_log)
+    return (video, video_url, finalize_status(headline, event_log))
 
 
 def _upload_image_or_raise(image_tensor, label: str) -> str:
@@ -192,7 +149,7 @@ class Soze_FALSeedance2ImageToVideo:
     async def generate(self, speed, prompt, image, resolution, duration, aspect_ratio,
                        generate_audio, seed, end_image=None, end_user_id="", unique_id=None):
         config = _build_config_string(speed, resolution, duration, aspect_ratio, generate_audio)
-        event_log = _EventLog()
+        event_log = EventLog()
         event_log.add(f"Config: {config}")
 
         # None-tolerance: if the caller didn't actually wire up the required inputs,
@@ -200,22 +157,22 @@ class Soze_FALSeedance2ImageToVideo:
         if image is None or _is_blank(prompt):
             headline = "Seedance image-to-video skipped: missing required input(s)."
             logger.info(headline)
-            _push_node_status(unique_id, headline, event_log)
-            return (None, "", config, _finalize_status(headline, event_log))
+            push_node_status(unique_id, headline, event_log)
+            return (None, "", config, finalize_status(headline, event_log))
 
         try:
             _validate_resolution(speed, resolution)
             args = _build_common_args(prompt, resolution, duration, aspect_ratio, generate_audio, seed, end_user_id)
-            _push_node_status(unique_id, "Uploading start image...", event_log)
+            push_node_status(unique_id, "Uploading start image...", event_log)
             args["image_url"] = _upload_image_or_raise(image, "start image")
             if end_image is not None:
-                _push_node_status(unique_id, "Uploading end image...", event_log)
+                push_node_status(unique_id, "Uploading end image...", event_log)
                 args["end_image_url"] = _upload_image_or_raise(end_image, "end image")
         except Exception as e:
             logger.exception("Seedance image-to-video setup failed")
             headline = f"ERROR: {e!r}"
-            _push_node_status(unique_id, headline, event_log)
-            return (None, "", config, _finalize_status(headline, event_log))
+            push_node_status(unique_id, headline, event_log)
+            return (None, "", config, finalize_status(headline, event_log))
 
         video, video_url, status = await _call_seedance(
             _seedance_endpoint(speed, "image-to-video"), args,
@@ -276,20 +233,20 @@ class Soze_FALSeedance2ReferenceToVideo:
     async def generate(self, speed, prompt, resolution, duration, aspect_ratio,
                        generate_audio, seed, end_user_id="", unique_id=None, **slots):
         config = _build_config_string(speed, resolution, duration, aspect_ratio, generate_audio)
-        event_log = _EventLog()
+        event_log = EventLog()
         event_log.add(f"Config: {config}")
 
         if _is_blank(prompt):
             headline = "Seedance reference-to-video skipped: prompt is blank."
             logger.info(headline)
-            _push_node_status(unique_id, headline, event_log)
-            return (None, "", config, _finalize_status(headline, event_log))
+            push_node_status(unique_id, headline, event_log)
+            return (None, "", config, finalize_status(headline, event_log))
 
         try:
             _validate_resolution(speed, resolution)
             args = _build_common_args(prompt, resolution, duration, aspect_ratio, generate_audio, seed, end_user_id)
 
-            _push_node_status(unique_id, "Uploading reference images...", event_log)
+            push_node_status(unique_id, "Uploading reference images...", event_log)
             image_urls, image_conn, image_fail = self._upload_slots(
                 slots, "image", MAX_REFERENCE_IMAGES, ImageUtils.upload_image,
                 transform=lambda img: img[0:1],
@@ -297,14 +254,14 @@ class Soze_FALSeedance2ReferenceToVideo:
             if image_urls:
                 args["image_urls"] = image_urls
 
-            _push_node_status(unique_id, "Uploading reference videos...", event_log)
+            push_node_status(unique_id, "Uploading reference videos...", event_log)
             video_urls, video_conn, video_fail = self._upload_slots(
                 slots, "video", MAX_REFERENCE_VIDEOS, ImageUtils.upload_video,
             )
             if video_urls:
                 args["video_urls"] = video_urls
 
-            _push_node_status(unique_id, "Uploading reference audio...", event_log)
+            push_node_status(unique_id, "Uploading reference audio...", event_log)
             audio_urls, audio_conn, audio_fail = self._upload_slots(
                 slots, "audio", MAX_REFERENCE_AUDIOS, ImageUtils.upload_audio,
             )
@@ -313,8 +270,8 @@ class Soze_FALSeedance2ReferenceToVideo:
         except Exception as e:
             logger.exception("Seedance reference-to-video setup failed")
             headline = f"ERROR: {e!r}"
-            _push_node_status(unique_id, headline, event_log)
-            return (None, "", config, _finalize_status(headline, event_log))
+            push_node_status(unique_id, headline, event_log)
+            return (None, "", config, finalize_status(headline, event_log))
 
         connected_total = image_conn + video_conn + audio_conn
         upload_failures = image_fail + video_fail + audio_fail
@@ -326,8 +283,8 @@ class Soze_FALSeedance2ReferenceToVideo:
         if connected_total == 0:
             headline = "Seedance reference-to-video skipped: no reference inputs connected."
             logger.info(headline)
-            _push_node_status(unique_id, headline, event_log)
-            return (None, "", config, _finalize_status(headline, event_log))
+            push_node_status(unique_id, headline, event_log)
+            return (None, "", config, finalize_status(headline, event_log))
 
         if not (image_urls or video_urls or audio_urls):
             # Inputs were connected but every upload failed — surface that distinctly.
@@ -337,8 +294,8 @@ class Soze_FALSeedance2ReferenceToVideo:
                 f"but all uploads failed. Details: {details}"
             )
             logger.error(headline)
-            _push_node_status(unique_id, headline, event_log)
-            return (None, "", config, _finalize_status(headline, event_log))
+            push_node_status(unique_id, headline, event_log)
+            return (None, "", config, finalize_status(headline, event_log))
 
         if upload_failures:
             event_log.add(f"Partial uploads — {len(upload_failures)} failed: " + "; ".join(upload_failures))

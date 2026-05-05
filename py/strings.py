@@ -8,6 +8,7 @@ import folder_paths
 from comfy_api.latest import ComfyExtension, io
 from comfy_api.latest import _io
 
+from .status_utils import EventLog, push_node_status, finalize_status
 from .utils import (
     read_from_file,
     write_to_file,
@@ -118,25 +119,36 @@ class Soze_PromptCache:
             "required": {
                 "use_new_prompt": ("BOOL", {"default": True}),
                 "new_prompt": ("STRING", {"default": "", "forceInput": True}),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_NAMES = ("output_prompt", "is_new_prompt")
-    RETURN_TYPES = ("STRING", "BOOL")
+    RETURN_NAMES = ("output_prompt", "is_new_prompt", "status")
+    RETURN_TYPES = ("STRING", "BOOL", "STRING")
     FUNCTION = "prompt_with_cache"
     CATEGORY = "strings"
 
-    def prompt_with_cache(self, new_prompt, use_new_prompt):
+    def prompt_with_cache(self, new_prompt, use_new_prompt, unique_id=None):
+        new_len = len(new_prompt or "")
         if use_new_prompt:
             write_to_file('sozepromptcache.txt', new_prompt)
-            return _sanitize_tuple((new_prompt, True))
+            status = f"OK: using NEW prompt ({new_len} chars), cache updated."
+            push_node_status(unique_id, status)
+            out, is_new = _sanitize_tuple((new_prompt, True))
+            return (out, is_new, status)
         else:
             old_prompt = read_from_file('sozepromptcache.txt')
             write_to_file('sozepromptcache.txt', new_prompt)
             if old_prompt:
-                return _sanitize_tuple((old_prompt, False))
+                status = f"OK: using CACHED prompt ({len(old_prompt)} chars); new prompt stored for next run."
+                push_node_status(unique_id, status)
+                out, is_new = _sanitize_tuple((old_prompt, False))
+                return (out, is_new, status)
             else:
-                return _sanitize_tuple((new_prompt, True))
+                status = f"OK: cache empty — using NEW prompt ({new_len} chars)."
+                push_node_status(unique_id, status)
+                out, is_new = _sanitize_tuple((new_prompt, True))
+                return (out, is_new, status)
             
 
 
@@ -382,7 +394,7 @@ class Soze_StringFunctions:
                         "default": "NONE"
                 }),
                 "string_function_type5": ([
-                        "NONE", 
+                        "NONE",
                         "UPPERCASE",
                         "LOWERCASE",
                         "TITLECASE",
@@ -396,13 +408,15 @@ class Soze_StringFunctions:
                         "REPLACE_SPACES_WITH_HYPHENS",
                         "REMOVE_NUMBERS_IN_ROUND_BRACKETS",
                         "SPLIT_LINES",
-                    ], {                    
+                    ], {
                         "default": "NONE"
                 }),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("STRING",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("output", "status")
     FUNCTION = "executefunction"
     CATEGORY = "strings"
 
@@ -437,12 +451,17 @@ class Soze_StringFunctions:
             result = input_string
         return result
 
-    def executefunction(self, input_string, string_function_type1="NONE", string_function_type2="NONE", string_function_type3="NONE", string_function_type4="NONE", string_function_type5="NONE"):
+    def executefunction(self, input_string, string_function_type1="NONE", string_function_type2="NONE", string_function_type3="NONE", string_function_type4="NONE", string_function_type5="NONE", unique_id=None):
         result = input_string
         function_types = [string_function_type1, string_function_type2, string_function_type3, string_function_type4, string_function_type5]
+        applied = [t for t in function_types if t != "NONE"]
         for function_type in function_types:
             result = self.process_string_function(result, function_type)
-        return _sanitize_tuple((result,))
+        sanitized = _sanitize_tuple((result,))[0]
+        preview = sanitized[:80] + ("…" if len(sanitized) > 80 else "")
+        status = f"OK: applied [{' → '.join(applied) if applied else 'NONE'}] → '{preview}'"
+        push_node_status(unique_id, status)
+        return (sanitized, status)
 
 
 
@@ -454,7 +473,8 @@ class Soze_AppendToTextFile:
             "required": {
                 "filename_path": ("STRING", {"default": "","multiline": False}),
                 "append_text": ("STRING", {"default": "", 'forceInput': True }),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
     RETURN_NAMES = ()
     RETURN_TYPES = ()
@@ -462,34 +482,43 @@ class Soze_AppendToTextFile:
     CATEGORY = "utils"
     OUTPUT_NODE = True
     @classmethod
-    def IS_CHANGED(self, filename_path, append_text):
-        return time.time()  
-    
-    def append_to_file(self, filename_path, append_text):
-        if filename_path.strip() != "":
-            # Get the ComfyUI output directory
-            output_dir = folder_paths.get_output_directory()
-            
-            # Normalize path separators for OS compatibility
-            filename_path = os.path.normpath(filename_path)
-            
-            # Combine output directory with the provided filename path
-            full_path = os.path.join(output_dir, filename_path)
-            
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            # Append the text to the file, creating it if it doesn't exist
-            retries = 3
-            for attempt in range(retries):
-                try:
-                    with open(full_path, 'a', encoding='utf-8') as file:
-                        file.write(append_text + '\n')
-                    break
-                except Exception as e:
-                    if attempt < retries - 1:
-                        time.sleep(0.1)
-                    else:
-                        raise e
+    def IS_CHANGED(self, filename_path, append_text, unique_id=None):
+        return time.time()
+
+    def append_to_file(self, filename_path, append_text, unique_id=None):
+        if filename_path.strip() == "":
+            push_node_status(unique_id, "Skipped: filename_path is empty.")
+            return ()
+        # Get the ComfyUI output directory
+        output_dir = folder_paths.get_output_directory()
+
+        # Normalize path separators for OS compatibility
+        filename_path = os.path.normpath(filename_path)
+
+        # Combine output directory with the provided filename path
+        full_path = os.path.join(output_dir, filename_path)
+
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        # Append the text to the file, creating it if it doesn't exist
+        retries = 3
+        bytes_written = len((append_text + '\n').encode('utf-8'))
+        for attempt in range(retries):
+            try:
+                with open(full_path, 'a', encoding='utf-8') as file:
+                    file.write(append_text + '\n')
+                break
+            except Exception as e:
+                if attempt < retries - 1:
+                    time.sleep(0.1)
+                else:
+                    push_node_status(unique_id, f"ERROR appending to {full_path}: {e!r}")
+                    raise e
+        try:
+            total = os.path.getsize(full_path)
+        except OSError:
+            total = 0
+        push_node_status(unique_id, f"OK: appended {bytes_written} bytes; file now {total:,} bytes — {full_path}")
         return ()
 
 
@@ -644,7 +673,8 @@ class Soze_SaveTextFileToOutput:
                 "filename_path": ("STRING", {"default": "","multiline": False}),
                 "file_extension": ("STRING", {"default": "txt","multiline": False}),
                 "overwrite_file": ("BOOLEAN", {"default": False}),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
     RETURN_NAMES = ()
     RETURN_TYPES = ()
@@ -652,49 +682,56 @@ class Soze_SaveTextFileToOutput:
     CATEGORY = "soze"
     OUTPUT_NODE = True
     @classmethod
-    def IS_CHANGED(self, input_string, file_extension, filename_path, overwrite_file):
+    def IS_CHANGED(self, input_string, file_extension, filename_path, overwrite_file, unique_id=None):
         return time.time()
-    
-    def load_text_from_file(self, input_string, file_extension, filename_path, overwrite_file):
+
+    def load_text_from_file(self, input_string, file_extension, filename_path, overwrite_file, unique_id=None):
         if input_string is None:
+            push_node_status(unique_id, "Skipped: input_string is None.")
             return ()
-        if filename_path.strip() != "":
-            # Get the ComfyUI output directory
-            output_dir = folder_paths.get_output_directory()
-            # Normalize path separators for OS compatibility
-            filename_path = os.path.normpath(filename_path) 
-            
-            # Add extension if missing
-            if file_extension and not filename_path.lower().endswith(f".{file_extension.lower()}"):
-                filename_path = f"{filename_path}.{file_extension}"
+        if filename_path.strip() == "":
+            push_node_status(unique_id, "Skipped: filename_path is empty.")
+            return ()
 
-            # Combine output directory with the provided filename path
-            full_path = os.path.join(output_dir, filename_path)
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        # Get the ComfyUI output directory
+        output_dir = folder_paths.get_output_directory()
+        # Normalize path separators for OS compatibility
+        filename_path = os.path.normpath(filename_path)
 
-            if not overwrite_file and os.path.exists(full_path):
-                base, ext = os.path.splitext(full_path)
-                counter = 1
-                while True:
-                    new_path = f"{base}_{counter:05d}{ext}"
-                    if not os.path.exists(new_path):
-                        full_path = new_path
-                        break
-                    counter += 1
+        # Add extension if missing
+        if file_extension and not filename_path.lower().endswith(f".{file_extension.lower()}"):
+            filename_path = f"{filename_path}.{file_extension}"
 
-            # Save the text to the file
-            retries = 3 
-            for attempt in range(retries):
-                try:
-                    with open(full_path, 'w', encoding='utf-8') as file:
-                        file.write(input_string)    
+        # Combine output directory with the provided filename path
+        full_path = os.path.join(output_dir, filename_path)
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+        if not overwrite_file and os.path.exists(full_path):
+            base, ext = os.path.splitext(full_path)
+            counter = 1
+            while True:
+                new_path = f"{base}_{counter:05d}{ext}"
+                if not os.path.exists(new_path):
+                    full_path = new_path
                     break
-                except Exception as e:
-                    if attempt < retries - 1:
-                        time.sleep(0.1)
-                    else:
-                        raise e 
+                counter += 1
+
+        # Save the text to the file
+        retries = 3
+        bytes_written = len((input_string or "").encode('utf-8'))
+        for attempt in range(retries):
+            try:
+                with open(full_path, 'w', encoding='utf-8') as file:
+                    file.write(input_string)
+                break
+            except Exception as e:
+                if attempt < retries - 1:
+                    time.sleep(0.1)
+                else:
+                    push_node_status(unique_id, f"ERROR writing to {full_path}: {e!r}")
+                    raise e
+        push_node_status(unique_id, f"OK: wrote {bytes_written} bytes -> {full_path}")
         return ()
             
 
@@ -718,14 +755,15 @@ class Soze_OutputFilename:
                              'File_Input_3': ('STRING', {'default': ''}),
                              'File_Input_4': ('STRING', {'default': ''}),
                              'File_Input_5': ('STRING', {'default': ''})
-                             }}
+                             },
+                'hidden': {'unique_id': 'UNIQUE_ID'}}
 
-    RETURN_NAMES = ('Filename_&_Path','Path','Filename')
-    RETURN_TYPES = ('STRING','STRING','STRING')
+    RETURN_NAMES = ('Filename_&_Path','Path','Filename','status')
+    RETURN_TYPES = ('STRING','STRING','STRING','STRING')
     FUNCTION = 'OutputFilename'
     CATEGORY = 'strings'
 
-    def OutputFilename(self, Path_Delimiter, Path_Input_1, Path_Input_2, Path_Input_3, Path_Input_4, Path_Input_5, File_Delimiter, File_Input_1, File_Input_2, File_Input_3, File_Input_4, File_Input_5):
+    def OutputFilename(self, Path_Delimiter, Path_Input_1, Path_Input_2, Path_Input_3, Path_Input_4, Path_Input_5, File_Delimiter, File_Input_1, File_Input_2, File_Input_3, File_Input_4, File_Input_5, unique_id=None):
         # Collect and process path inputs in a loop for cleaner code
         path_inputs = [Path_Input_1, Path_Input_2, Path_Input_3, Path_Input_4, Path_Input_5]
         paths = [replace_date_placeholders(p) for p in path_inputs if p]
@@ -737,12 +775,15 @@ class Soze_OutputFilename:
         else:
             files_list = [replace_date_placeholders(f) for f in file_inputs if f]
             files = File_Delimiter.join(files_list)
-        
+
         # Sanitize the filename part
         files = _sanitize_filename(files)
 
         filepath = Path_Delimiter.join([path, files])
-        return _sanitize_tuple((filepath, path, files,))
+        sanitized_path, sanitized_dir, sanitized_file = _sanitize_tuple((filepath, path, files,))
+        status = f"OK: {sanitized_path}"
+        push_node_status(unique_id, status)
+        return (sanitized_path, sanitized_dir, sanitized_file, status)
 
 
 

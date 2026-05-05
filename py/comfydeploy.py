@@ -12,6 +12,8 @@ from azure.storage.blob import BlobServiceClient
 from PIL import Image, ImageOps
 from server import PromptServer
 
+from .status_utils import EventLog, push_node_status, finalize_status
+
 logger = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = (10, 120)  # (connect, read) seconds
@@ -80,16 +82,18 @@ class Soze_ComfyDeployAPINode:
                 "api_parameters": ("STRING", {"forceInput": True}),
                 "api_url": ("STRING", {"default": "https://api.comfydeploy.com/api/run/deployment/queue"}),
                 "deployment_id": ("STRING", {"default": ""}),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("run_id", )
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("run_id", "status")
     FUNCTION = "run"
     CATEGORY = "Soze Nodes"
     OUTPUT_NODE = True
 
-    def run(self, api_parameters, api_url, deployment_id):
+    def run(self, api_parameters, api_url, deployment_id, unique_id=None):
+        log = EventLog()
         api_key = load_api_key_from_env()
         headers = {
             "Content-Type": "application/json",
@@ -116,6 +120,8 @@ class Soze_ComfyDeployAPINode:
                             # Strings and image URLs should be quoted in the parameter string, but in JSON they are just strings
                             parameters[k] = v
 
+        push_node_status(unique_id, f"Deployment: {deployment_id}, params: {len(parameters)}", log)
+
         payload = {
             "deployment_id": deployment_id,
             "inputs": parameters
@@ -124,14 +130,21 @@ class Soze_ComfyDeployAPINode:
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
+                push_node_status(unique_id, f"POST {api_url} (attempt {attempt}/{max_retries})", log)
                 response = requests.post(api_url, headers=headers, json=payload, timeout=HTTP_TIMEOUT)
                 if response.status_code != 200:
                     raise Exception(f"API call failed: {response.status_code} {response.text}")
                 result = response.json()
-                return (result,)
+                run_id_value = result.get("run_id", result) if isinstance(result, dict) else result
+                headline = f"OK: queued run_id={run_id_value}"
+                push_node_status(unique_id, headline, log)
+                return (result, finalize_status(headline, log))
             except Exception as e:
                 if attempt == max_retries:
+                    headline = f"ERROR after {max_retries} attempts: {e!r}"
+                    push_node_status(unique_id, headline, log)
                     raise
+                push_node_status(unique_id, f"Attempt {attempt} failed: {e}. Retrying in 5s...", log)
                 logger.warning("API call failed (attempt %d/%d): %s. Retrying in 5 seconds...", attempt, max_retries, e)
                 time.sleep(5)
 
@@ -653,15 +666,15 @@ class Soze_ComfyDeployCacheAPIRunIDs:
                     run_id = run_id_json["run_id"]
         except Exception:
             pass
-            
+
         user_id = "default"
-        
+
         # Check if we have prompt data (this dictionary comes from the frontend)
         if prompt and isinstance(prompt, dict):
              # 'client_id' is frequently injected here by the frontend
             if "client_id" in prompt:
                  user_id = prompt["client_id"]
-        
+
         # 2. Use the ID to get the directory
         # Note: Ensure folder_paths has this method (it might be in a specific branch/version)
         try:
@@ -683,11 +696,14 @@ class Soze_ComfyDeployCacheAPIRunIDs:
             relative_folder = cache_save_folder.strip().lstrip("/").lstrip("\\")
             cache_folder = os.path.join(run_id_cache_folder, relative_folder)
             os.makedirs(cache_folder, exist_ok=True)
-            # Save run_id to a text file        
+            # Save run_id to a text file
             cache_file_path = os.path.join(cache_folder, f"{run_id}")
             with open(cache_file_path, "w") as f:
                 f.write("")
-        return ()   
+            push_node_status(unique_id, f"Cached run_id={run_id} -> {cache_folder}")
+        else:
+            push_node_status(unique_id, f"Skipped: cache_save_folder is empty (run_id={run_id})")
+        return ()
 
 class Soze_ComfyDeployCachedAPIRunInfo:
     def IS_CHANGED(self, *args, **kwargs):
@@ -706,12 +722,12 @@ class Soze_ComfyDeployCachedAPIRunInfo:
             }        
         }
 
-    RETURN_TYPES = ("STRING", "INT", "BOOLEAN")
-    RETURN_NAMES = ("run_ids", "count", "has_run_ids")
+    RETURN_TYPES = ("STRING", "INT", "BOOLEAN", "STRING")
+    RETURN_NAMES = ("run_ids", "count", "has_run_ids", "status")
     FUNCTION = "get_info"
     CATEGORY = "Soze Nodes"
     OUTPUT_NODE = True
-    
+
     def get_info(self, cache_save_folder, unique_id=None, extra_pnginfo=None, prompt=None):
         user_id = "default"
         
@@ -739,15 +755,17 @@ class Soze_ComfyDeployCachedAPIRunInfo:
 
         # 3. Check cache folder if specified
         run_ids = []
-        if cache_save_folder.strip():   
+        if cache_save_folder.strip():
             relative_folder = cache_save_folder.strip().lstrip("/").lstrip("\\")
             cache_folder = os.path.join(run_id_cache_folder, relative_folder)
-            
+
             if os.path.exists(cache_folder):
                 run_id_files = [f for f in os.listdir(cache_folder) if os.path.isfile(os.path.join(cache_folder, f)) and not f.startswith("_removed_")]
                 run_ids = run_id_files
 
-        return (";".join(run_ids), len(run_ids), len(run_ids) > 0)
+        status = f"OK: {len(run_ids)} cached run_id(s) in {cache_save_folder or '(empty)'}"
+        push_node_status(unique_id, status)
+        return (";".join(run_ids), len(run_ids), len(run_ids) > 0, status)
     
     
     
@@ -769,21 +787,21 @@ class Soze_ComfyDeployRetrieveCachedAPIRunIDs:
             }        
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("run_id",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("run_id", "status")
     FUNCTION = "run"
     CATEGORY = "Soze Nodes"
     OUTPUT_NODE = True
 
     def run(self, cache_save_folder, remove_after_retrieval=False, unique_id=None, extra_pnginfo=None, prompt=None):
         user_id = "default"
-        
+
         # Check if we have prompt data (this dictionary comes from the frontend)
         if prompt and isinstance(prompt, dict):
              # 'client_id' is frequently injected here by the frontend
             if "client_id" in prompt:
                  user_id = prompt["client_id"]
-        
+
         # 2. Use the ID to get the directory
         # Note: Ensure folder_paths has this method (it might be in a specific branch/version)
         try:
@@ -802,14 +820,15 @@ class Soze_ComfyDeployRetrieveCachedAPIRunIDs:
 
         # 3. Check cache folder if specified
         run_id = ""
-        if cache_save_folder.strip():   
+        removed = False
+        if cache_save_folder.strip():
             relative_folder = cache_save_folder.strip().lstrip("/").lstrip("\\")
             cache_folder = os.path.join(run_id_cache_folder, relative_folder)
-            
+
             if os.path.exists(cache_folder):
                 run_id_files = [f for f in os.listdir(cache_folder) if os.path.isfile(os.path.join(cache_folder, f)) and not f.startswith("_removed_")]
                 run_id_files.sort(key=lambda x: os.path.getmtime(os.path.join(cache_folder, x)))
-                
+
                 for f in run_id_files:
                     run_id = f
                     cache_file_path = os.path.join(cache_folder, f"{run_id}")
@@ -818,17 +837,21 @@ class Soze_ComfyDeployRetrieveCachedAPIRunIDs:
                         if remove_after_retrieval:
                             try:
                                 os.rename(cache_file_path, removed_file_path)
+                                removed = True
                             except Exception as e:
                                 logger.error("Error removing cached file: %s", e)
                     break
 
         if run_id == "":
+            push_node_status(unique_id, f"ERROR: no cached run_id in {cache_save_folder or '(empty)'}")
             raise Exception("No cached run_id found in the specified folder.")
         else:
-            return (run_id,)   
-        
-        
-        
+            status = f"OK: retrieved {run_id}" + (" (removed from cache)" if removed else " (kept in cache)")
+            push_node_status(unique_id, status)
+            return (run_id, status)
+
+
+
 class Soze_ComfyDeployClearCachedAPIRunIDs:
     def IS_CHANGED(self, *args, **kwargs):
         return True
@@ -846,8 +869,8 @@ class Soze_ComfyDeployClearCachedAPIRunIDs:
             }        
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("run_id",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("run_id", "status")
     FUNCTION = "clear"
     CATEGORY = "Soze Nodes"
     OUTPUT_NODE = True
@@ -879,14 +902,15 @@ class Soze_ComfyDeployClearCachedAPIRunIDs:
 
         # 3. Check cache folder if specified
         run_id = ""
-        if cache_save_folder.strip():   
+        cleared = 0
+        if cache_save_folder.strip():
             relative_folder = cache_save_folder.strip().lstrip("/").lstrip("\\")
             cache_folder = os.path.join(run_id_cache_folder, relative_folder)
-            
+
             if os.path.exists(cache_folder):
                 run_id_files = [f for f in os.listdir(cache_folder) if os.path.isfile(os.path.join(cache_folder, f)) and not f.startswith("_removed_")]
                 run_id_files.sort(key=lambda x: os.path.getmtime(os.path.join(cache_folder, x)))
-                
+
                 for f in run_id_files:
                     run_id = f
                     cache_file_path = os.path.join(cache_folder, f"{run_id}")
@@ -895,14 +919,18 @@ class Soze_ComfyDeployClearCachedAPIRunIDs:
                         if remove_after_retrieval:
                             try:
                                 os.rename(cache_file_path, removed_file_path)
+                                cleared += 1
                             except Exception as e:
                                 logger.error("Error removing cached file: %s", e)
                     break
 
         if run_id == "":
+            push_node_status(unique_id, f"ERROR: no cached run_id in {cache_save_folder or '(empty)'}")
             raise Exception("No cached run_id found in the specified folder.")
         else:
-            return (run_id,)   
+            status = f"OK: {run_id} ({'cleared' if cleared else 'no change'})"
+            push_node_status(unique_id, status)
+            return (run_id, status)
 
     
     
@@ -932,10 +960,11 @@ class Soze_ComfyDeployDownloadAPIFiles:
 
     def run(self, run_id, output_save_folder, api_url, wait_max_seconds, unique_id=None,):
         def send_status(status_text):
+            push_node_status(unique_id, status_text)
             if unique_id:
                 try:
                     PromptServer.instance.send_sync("soze.comfydeploy.status", {"node_id": unique_id, "status_text": status_text})
-                except:
+                except Exception:
                     pass
 
         try:

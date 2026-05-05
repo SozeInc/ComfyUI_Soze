@@ -7,10 +7,18 @@ from typing import Iterator, List, Tuple, Dict, Any, Union, Optional
 
 import numpy as np
 
+from .status_utils import push_node_status
 from .utils import (
     error_if_mismatched_list_args,
     zip_with_fill,
 )
+
+
+def _first_or_none(value):
+    """Hidden inputs on INPUT_IS_LIST nodes arrive as lists — unwrap to scalar."""
+    if isinstance(value, (list, tuple)):
+        return value[0] if value else None
+    return value
 
 custom_context = Context(prec=8)
 
@@ -28,6 +36,7 @@ class Soze_IntRangeNode:
                 "step": ("INT", {"default": 0, "min": -4096, "max": 4096, "step": 1}),
                 "end_mode": (["Inclusive", "Exclusive"], {"default": "Inclusive"}),
             },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("INT", "INT")
@@ -39,9 +48,12 @@ class Soze_IntRangeNode:
     CATEGORY = "range"
 
     def build_range(
-        self, start: List[int], stop: List[int], step: List[int], end_mode: List[str]
+        self, start: List[int], stop: List[int], step: List[int], end_mode: List[str], unique_id=None,
     ) -> Tuple[List[int], List[int]]:
-        error_if_mismatched_list_args(locals())
+        unique_id = _first_or_none(unique_id)
+        # Drop unique_id from locals() before validation — it's not a list-arg.
+        validate_args = {k: v for k, v in locals().items() if k not in ("unique_id", "self", "__class__", "validate_args")}
+        error_if_mismatched_list_args(validate_args)
 
         ranges = []
         range_sizes = []
@@ -54,6 +66,7 @@ class Soze_IntRangeNode:
             ranges.extend(vals)
             range_sizes.append(len(vals))
 
+        push_node_status(unique_id, f"OK: {len(ranges)} value(s) across {len(range_sizes)} range(s); sizes={range_sizes}")
         return ranges, range_sizes
 
 
@@ -73,7 +86,8 @@ class Soze_IntNumStepsRangeNode:
                 ),
                 "end_mode": (["Inclusive", "Exclusive"], {"default": "Inclusive"}),
                 "allow_uneven_steps": (["True", "False"], {"default": "False"}),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("INT", "INT")
@@ -91,11 +105,14 @@ class Soze_IntNumStepsRangeNode:
         num_steps: List[int],
         end_mode: List[str],
         allow_uneven_steps: List[str],
+        unique_id=None,
     ) -> Tuple[List[int], List[int]]:
+        unique_id = _first_or_none(unique_id)
         if len(allow_uneven_steps) > 1:
             raise Exception("List input for allow_uneven_steps is not supported.")
 
-        error_if_mismatched_list_args(locals())
+        validate_args = {k: v for k, v in locals().items() if k not in ("unique_id", "self", "__class__", "validate_args")}
+        error_if_mismatched_list_args(validate_args)
 
         ranges = []
         range_sizes = []
@@ -119,6 +136,7 @@ class Soze_IntNumStepsRangeNode:
             ranges.extend(vals)
             range_sizes.append(len(vals))
 
+        push_node_status(unique_id, f"OK: {len(ranges)} value(s) across {len(range_sizes)} range(s); sizes={range_sizes}")
         return ranges, range_sizes
 
 
@@ -135,6 +153,7 @@ class Soze_FloatRangeNode:
                 "step": ("FLOAT", {"default": 0.0, "min": -4096.0, "max": 4096.0, "step": 0.01}),
                 "end_mode": (["Inclusive", "Exclusive"], {"default": "Inclusive"}),
             },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("FLOAT", "INT")
@@ -167,8 +186,11 @@ class Soze_FloatRangeNode:
         stop: List[Union[float, Decimal]],
         step: List[Union[float, Decimal]],
         end_mode: List[str],
+        unique_id=None,
     ) -> Tuple[List[float], List[int]]:
-        error_if_mismatched_list_args(locals())
+        unique_id = _first_or_none(unique_id)
+        validate_args = {k: v for k, v in locals().items() if k not in ("unique_id", "self", "__class__", "validate_args")}
+        error_if_mismatched_list_args(validate_args)
         getcontext().prec = 12
 
         start = [Decimal(s) for s in start]
@@ -186,6 +208,7 @@ class Soze_FloatRangeNode:
             ranges.extend(vals)
             range_sizes.append(len(vals))
 
+        push_node_status(unique_id, f"OK: {len(ranges)} value(s) across {len(range_sizes)} range(s); sizes={range_sizes}")
         return ranges, range_sizes
 
 
@@ -201,6 +224,7 @@ class Soze_FloatNumStepsRangeNode:
                 "stop": ("FLOAT", {"default": 0.0, "min": -4096.0, "max": 4096.0, "step": 0.01}),
                 "num_steps": ("INT", {"default": 1, "min": 1, "max": 4096, "step": 1}),
             },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("FLOAT", "INT")
@@ -232,8 +256,11 @@ class Soze_FloatNumStepsRangeNode:
         start: List[Union[float, Decimal]],
         stop: List[Union[float, Decimal]],
         num_steps: List[int],
+        unique_id=None,
     ) -> Tuple[List[float], List[int]]:
-        error_if_mismatched_list_args(locals())
+        unique_id = _first_or_none(unique_id)
+        validate_args = {k: v for k, v in locals().items() if k not in ("unique_id", "self", "__class__", "validate_args")}
+        error_if_mismatched_list_args(validate_args)
         getcontext().prec = 12
 
         start = [Decimal(s) for s in start]
@@ -246,5 +273,6 @@ class Soze_FloatNumStepsRangeNode:
             ranges.extend(vals)
             range_sizes.append(len(vals))
 
+        push_node_status(unique_id, f"OK: {len(ranges)} value(s) across {len(range_sizes)} range(s); sizes={range_sizes}")
         return ranges, range_sizes
 

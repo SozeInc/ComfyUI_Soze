@@ -20,6 +20,7 @@ from torchvision.transforms.functional import to_pil_image
 import matplotlib.font_manager as fm
 from torch import Tensor
 
+from .status_utils import EventLog, push_node_status, finalize_status
 from .utils import (
     zip_with_fill,
     tensor2pil,
@@ -58,16 +59,17 @@ class Soze_LoadImage:
     def INPUT_TYPES(s):
         input_dir = folder_paths.get_input_directory()
         files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
-        return {"required":
-                    {"image": (sorted(files), {"image_upload": True})},
-                }
+        return {
+            "required": {"image": (sorted(files), {"image_upload": True})},
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
 
     CATEGORY = "image"
 
-    RETURN_NAMES = ("Image", "Mask", "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Image_Changed")
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "BOOL")
+    RETURN_NAMES = ("Image", "Mask", "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Image_Changed", "status")
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "BOOL", "STRING")
     FUNCTION = "load_image"
-    def load_image(self, image):
+    def load_image(self, image, unique_id=None):
         input_filepath = folder_paths.get_annotated_filepath(image)
         input_filename = os.path.basename(input_filepath)
         input_filename_no_ext = os.path.splitext(input_filename)[0]
@@ -113,10 +115,17 @@ class Soze_LoadImage:
 
         previous_input_filename = read_from_file('sozeimagecache.txt')
         write_to_file('sozeimagecache.txt', input_filename)
-        return (output_image, output_mask, input_filepath, input_filename, input_filename_no_ext, previous_input_filename != input_filename)
+        changed = previous_input_filename != input_filename
+        try:
+            h, w = output_image.shape[1], output_image.shape[2]
+        except Exception:
+            h, w = 0, 0
+        status = f"OK: {input_filename} ({w}x{h}, frames={len(output_images)}, changed={changed})"
+        push_node_status(unique_id, status)
+        return (output_image, output_mask, input_filepath, input_filename, input_filename_no_ext, changed, status)
 
     @classmethod
-    def IS_CHANGED(s, image):
+    def IS_CHANGED(s, image, unique_id=None):
         previous_input_filepath = s.read_previous_image_filename()
         if previous_input_filepath != image:
             return True
@@ -127,7 +136,7 @@ class Soze_LoadImage:
         return m.digest().hex()
 
     @classmethod
-    def VALIDATE_INPUTS(s, image):
+    def VALIDATE_INPUTS(s, image, unique_id=None):
         if not folder_paths.exists_annotated_filepath(image):
             return "Invalid image file: {}".format(image)
 
@@ -151,20 +160,25 @@ class Soze_LoadImagesFromFolder:
             "optional": {
                 "Image_Load_Count": ("INT", {"default": 1, "min": 0, "step": 1}),
                 "index": ("INT", {"default": 0, "min": 0, "max": 1000000, "control_after_generate": True, "step": 1}),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "STRING", "STRING", "STRING", "STRING", "BOOL")
-    RETURN_NAMES = ("Image", "Mask", "Load_Count", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Image_Changed")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "STRING", "STRING", "STRING", "STRING", "BOOL", "STRING")
+    RETURN_NAMES = ("Image", "Mask", "Load_Count", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Image_Changed", "status")
     FUNCTION = "load_images"
 
     CATEGORY = "image"
 
-    def load_images(self, Input_Folder, Image_Load_Count, index):
+    def load_images(self, Input_Folder, Image_Load_Count, index, unique_id=None):
+        log = EventLog()
+        push_node_status(unique_id, f"Scanning {Input_Folder}", log)
         if not os.path.isdir(Input_Folder):
+            push_node_status(unique_id, f"ERROR: folder not found: {Input_Folder}", log)
             raise FileNotFoundError(f"Folder not found: {Input_Folder}")
         dir_files = os.listdir(Input_Folder)
         if len(dir_files) == 0:
+            push_node_status(unique_id, f"ERROR: folder is empty: {Input_Folder}", log)
             raise FileNotFoundError(f"Folder only has {len(dir_files)} files in it: {Input_Folder}")
 
         # Filter files by extension
@@ -244,7 +258,9 @@ class Soze_LoadImagesFromFolder:
             input_filenamepath = image_path_list[0]
             input_filename = os.path.basename(input_filenamepath)
             input_filename_no_ext = os.path.splitext(input_filename)[0]
-            return (images[0], masks[0], 1, Input_Folder, input_filenamepath, input_filename, input_filename_no_ext)
+            headline = f"OK: 1 image at index {index} — {input_filename}"
+            push_node_status(unique_id, headline, log)
+            return (images[0], masks[0], 1, Input_Folder, input_filenamepath, input_filename, input_filename_no_ext, True, finalize_status(headline, log))
 
         elif len(images) > 1:
             image1 = images[0]
@@ -266,8 +282,11 @@ class Soze_LoadImagesFromFolder:
 
             previous_input_filename = read_from_file('sozeimagebatchcache.txt')
             write_to_file('sozeimagebatchcache.txt', input_filename)
+            changed = previous_input_filename != input_filename
 
-            return (image1, mask1, len(images), Input_Folder, input_filenamepath, input_filename, input_filename_no_ext, previous_input_filename != input_filename)
+            headline = f"OK: {len(images)} images from index {index}, first={input_filename}"
+            push_node_status(unique_id, headline, log)
+            return (image1, mask1, len(images), Input_Folder, input_filenamepath, input_filename, input_filename_no_ext, changed, finalize_status(headline, log))
 
     @classmethod
     def IS_CHANGED(cls, *args, **kwargs):
@@ -282,18 +301,22 @@ class Soze_LoadImageFromFilepath:
                 "Image_Filepath": ("STRING", {"default": ""}),
                 "Return_None_If_Not_Found": ("BOOLEAN", {"default": False, "tooltip": "If enabled, will return empty outputs instead of erroring if the file is not found."}),
             },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING", "BOOL")
-    RETURN_NAMES = ("Image", "Mask", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Image_Changed")
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING", "BOOL", "STRING")
+    RETURN_NAMES = ("Image", "Mask", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Image_Changed", "status")
     FUNCTION = "load_image_from_filepath"
 
     CATEGORY = "image"
-    
-    def load_image_from_filepath(self, Image_Filepath, Return_None_If_Not_Found=False):
+
+    def load_image_from_filepath(self, Image_Filepath, Return_None_If_Not_Found=False, unique_id=None):
         if not os.path.isfile(Image_Filepath) and not os.path.exists(Image_Filepath):
             if Return_None_If_Not_Found:
-                return (None, None, "", "", "", "", False)
+                msg = f"Skipped: file not found ({Image_Filepath}); Return_None_If_Not_Found=True"
+                push_node_status(unique_id, msg)
+                return (None, None, "", "", "", "", False, msg)
+            push_node_status(unique_id, f"ERROR: file not found: {Image_Filepath}")
             raise FileNotFoundError(f"File not found: {Image_Filepath}")
 
         input_filepath = folder_paths.get_annotated_filepath(Image_Filepath)
@@ -337,11 +360,17 @@ class Soze_LoadImageFromFilepath:
             output_image = output_images[0]
             output_mask = output_masks[0]
 
-        return (output_image, output_mask, os.path.dirname(input_filepath), input_filepath, input_filename, input_filename_no_ext, False)
+        try:
+            h, wd = output_image.shape[1], output_image.shape[2]
+        except Exception:
+            h, wd = 0, 0
+        status = f"OK: {input_filename} ({wd}x{h}, frames={len(output_images)})"
+        push_node_status(unique_id, status)
+        return (output_image, output_mask, os.path.dirname(input_filepath), input_filepath, input_filename, input_filename_no_ext, False, status)
 
 
-    
-    
+
+
 class Soze_LoadImagesFromFolderXLora:
     @classmethod
     def INPUT_TYPES(s):
@@ -353,20 +382,25 @@ class Soze_LoadImagesFromFolderXLora:
             },
             "optional": {
                 "index": ("INT", {"default": 0, "min": 0, "max": 1000000, "control_after_generate": True, "step": 1}),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT")
-    RETURN_NAMES = ("Image", "Mask", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Lora_Full_Path", "Lora_Name_Only", "Lora_Index")
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT", "STRING")
+    RETURN_NAMES = ("Image", "Mask", "Input_Path",  "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "Lora_Full_Path", "Lora_Name_Only", "Lora_Index", "status")
     FUNCTION = "load_images"
 
     CATEGORY = "image"
 
-    def load_images(self, Input_Folder, index, start_lora_name, lora_count):
+    def load_images(self, Input_Folder, index, start_lora_name, lora_count, unique_id=None):
+        log = EventLog()
+        push_node_status(unique_id, f"Folder: {Input_Folder}", log)
         if not os.path.isdir(Input_Folder):
+            push_node_status(unique_id, f"ERROR: folder not found: {Input_Folder}", log)
             raise FileNotFoundError(f"Folder not found: {Input_Folder}")
         dir_files = os.listdir(Input_Folder)
         if len(dir_files) == 0:
+            push_node_status(unique_id, f"ERROR: folder is empty: {Input_Folder}", log)
             raise FileNotFoundError(f"Folder only has {len(dir_files)} files in it: {Input_Folder}")
 
         # Filter files by extension
@@ -385,23 +419,29 @@ class Soze_LoadImagesFromFolderXLora:
         # Calculate which image and lora to use
         num_images = len(dir_files)
         if num_images == 0:
+            push_node_status(unique_id, f"ERROR: no images in {Input_Folder}", log)
             raise FileNotFoundError(f"No valid images found in folder: {Input_Folder}")
+        push_node_status(unique_id, f"Found {num_images} image(s).", log)
 
         image_idx = index % num_images
         lora_list = folder_paths.get_filename_list("loras")
         try:
             start_lora_index = lora_list.index(start_lora_name)
         except ValueError:
+            push_node_status(unique_id, f"ERROR: lora '{start_lora_name}' not found.", log)
             raise ValueError(f"Lora '{start_lora_name}' not found in lora list.")
 
         lora_index = start_lora_index + (index // num_images)
         if lora_index >= len(lora_list):
+            push_node_status(unique_id, f"ERROR: lora_index {lora_index} >= lora_list size {len(lora_list)}", log)
             raise ValueError(f"There are no more lora in the list ({len(lora_list)})")
         elif lora_index >= (start_lora_index + lora_count):
+            push_node_status(unique_id, f"ERROR: iteration complete after {num_images} rows × {lora_count} loras.", log)
             raise ValueError(f"Index {index} has completed the iteration of rows {num_images} against each lora indicated {lora_count}.")
 
         image_path = dir_files[image_idx]
         if os.path.isdir(image_path):
+            push_node_status(unique_id, f"ERROR: image path is a directory: {image_path}", log)
             raise ValueError(f"Image path is a directory: {image_path}")
 
         input_filepath = folder_paths.get_annotated_filepath(image_path)
@@ -451,6 +491,11 @@ class Soze_LoadImagesFromFolderXLora:
         previous_input_filename = read_from_file('sozeimagebatchcache.txt')
         write_to_file('sozeimagebatchcache.txt', input_filename)
 
+        headline = (
+            f"OK: image {image_idx+1}/{num_images} ({input_filename}), "
+            f"lora {lora_index+1}/{len(lora_list)} ({lora_name_only})"
+        )
+        push_node_status(unique_id, headline, log)
         return (
             output_image,
             output_mask,
@@ -460,14 +505,15 @@ class Soze_LoadImagesFromFolderXLora:
             input_filename_no_ext,
             lora_full_path,
             lora_name_only,
-            lora_index
+            lora_index,
+            finalize_status(headline, log),
         )
 
     @classmethod
     def IS_CHANGED(cls, *args, **kwargs):
         # Return a value that changes each time to force re-execution
         return float("NaN")
-    
+
 
 
 # Code from https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes
@@ -487,28 +533,32 @@ class Soze_BatchProcessSwitch:
                 "Image_Batch": ("IMAGE", ),
                 "Image_Filename_Path_Passthrough": ("STRING", {"default": "", "forceInput": True}),
                 "Image_Batch_Filename_Path_Passthrough": ("STRING", {"default": "", "forceInput": True})
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("IMAGE", "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext")
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGE", "Image_Filename_Path", "Image_Filename", "Image_Filename_No_Ext", "status")
     FUNCTION = "switch"
     CATEGORY = "batch"
 
-    def switch(self, Input, Image=None, Image_Batch=None, Image_Filename_Path_Passthrough="", Image_Batch_Filename_Path_Passthrough=""):
+    def switch(self, Input, Image=None, Image_Batch=None, Image_Filename_Path_Passthrough="", Image_Batch_Filename_Path_Passthrough="", unique_id=None):
         input_filenamepath = ""
         input_filename = ""
         input_filename_no_ext = ""
 
         if Input == "Image":
             if Image_Filename_Path_Passthrough != "":
-                try: input_filenamepath = folder_paths.get_annotated_filepath(Image_Filename_Path_Passthrough) 
+                try: input_filenamepath = folder_paths.get_annotated_filepath(Image_Filename_Path_Passthrough)
                 except Exception: pass
                 try: input_filename = os.path.basename(input_filenamepath)
                 except Exception: pass
                 try: input_filename_no_ext = os.path.splitext(input_filename)[0]
                 except Exception: pass
-            return (Image, input_filenamepath, input_filename, input_filename_no_ext)
+            connected = "Image" if Image is not None else "MISSING Image"
+            status = f"Branch: Image ({connected}); filename={input_filename or '(none)'}"
+            push_node_status(unique_id, status)
+            return (Image, input_filenamepath, input_filename, input_filename_no_ext, status)
         else:
             if Image_Batch_Filename_Path_Passthrough != "":
                 try: input_filenamepath = folder_paths.get_annotated_filepath(Image_Batch_Filename_Path_Passthrough)
@@ -517,7 +567,10 @@ class Soze_BatchProcessSwitch:
                 except Exception: pass
                 try: input_filename_no_ext = os.path.splitext(input_filename)[0]
                 except Exception: pass
-            return (Image_Batch, input_filenamepath, input_filename, input_filename_no_ext)
+            connected = "Image Batch" if Image_Batch is not None else "MISSING Image Batch"
+            status = f"Branch: Image Batch ({connected}); filename={input_filename or '(none)'}"
+            push_node_status(unique_id, status)
+            return (Image_Batch, input_filenamepath, input_filename, input_filename_no_ext, status)
     
 #Code From https://github.com/melMass/comfy_mtb
 class Soze_LoadImageFromUrl:
@@ -533,28 +586,43 @@ class Soze_LoadImageFromUrl:
                         "default": ""
                     },
                 ),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("IMAGE", "STRING", "STRING")
-    RETURN_NAMES = ("IMAGE", "Image_Filename", "Image_Filename_No_Ext")
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGE", "Image_Filename", "Image_Filename_No_Ext", "status")
     FUNCTION = "load"
     CATEGORY = "images"
 
-    def load(self, url):
-        # Get the image from the url
-        response = requests.get(url, stream=True)
-        image = Image.open(response.raw)
-        image = ImageOps.exif_transpose(image)
+    def load(self, url, unique_id=None):
+        log = EventLog()
+        push_node_status(unique_id, f"Fetching: {url}", log)
+        try:
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            image = Image.open(response.raw)
+            image = ImageOps.exif_transpose(image)
+        except Exception as e:
+            headline = f"ERROR: {e!r}"
+            push_node_status(unique_id, headline, log)
+            raise
 
         # Extract filename from URL
         filename = os.path.basename(url)
         filename_no_ext = os.path.splitext(filename)[0]
 
+        try:
+            wd, h = image.size
+        except Exception:
+            wd, h = 0, 0
+        headline = f"OK: {filename or '(no filename)'} ({wd}x{h})"
+        push_node_status(unique_id, headline, log)
         return (
             pil2tensor(image),
             filename,
-            filename_no_ext
+            filename_no_ext,
+            finalize_status(headline, log),
         )
 
 
@@ -1145,16 +1213,19 @@ class Soze_GetImageColors:
                         "tooltip": "Comma-separated list of colors to exclude from the output",
                     },
                 ),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = (
         "STRING",
         "STRING",
+        "STRING",
     )
     RETURN_NAMES = (
         "rgb_colors",
-        "hex_colors"
+        "hex_colors",
+        "status",
     )
     FUNCTION = "main"
     CATEGORY = "image"
@@ -1164,6 +1235,7 @@ class Soze_GetImageColors:
         input_image: torch.Tensor,
         num_colors: int = 5,
         exclude_colors: str = "",
+        unique_id=None,
     ) -> tuple[str, ...]:
         # Process exclude colors
         if exclude_colors.strip():
@@ -1205,9 +1277,12 @@ class Soze_GetImageColors:
             rgb_colors.append(rgb)
             hex_colors.append(hex_color)
 
+        status = f"OK: top {len(hex_colors)} of {num_colors} requested — {', '.join(hex_colors[:8])}"
+        push_node_status(unique_id, status)
         return (
             ", ".join(rgb_colors),
-            ", ".join(hex_colors)
+            ", ".join(hex_colors),
+            status,
         )
     
 
@@ -1341,10 +1416,12 @@ class Soze_ShrinkImage:
                 "scale": ("FLOAT", {"default": 0.5, "min": 0.01, "max": 1.0, "step": 0.01}),
                 "width": ("FLOAT", {"default": 100, "min": 2, "max": 10000, "step": 1}),
                 "height": ("FLOAT", {"default": 100, "min": 2, "max": 10000, "step": 1})
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("IMAGE",)
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("IMAGE", "status")
     FUNCTION = "shrink_image"
     CATEGORY = "image/processing"
 
@@ -1369,7 +1446,7 @@ class Soze_ShrinkImage:
         new_height = max(1, round(height * scale))
         return img.resize((new_width, new_height), algorithm)
 
-    def shrink_image(self, image, mode, resize_algorithm, maintain_aspect, scale=None, width=None, height=None):
+    def shrink_image(self, image, mode, resize_algorithm, maintain_aspect, scale=None, width=None, height=None, unique_id=None):
         resize_algorithms = {
             "NEAREST": Image.NEAREST,
             "BILINEAR": Image.BILINEAR,
@@ -1379,15 +1456,25 @@ class Soze_ShrinkImage:
         algorithm = resize_algorithms[resize_algorithm]
 
         output_images = []
+        first_in = None
+        last_out = None
         for img in image:
             img = to_pil_image(img.permute(2, 0, 1))
-            scale = self.calculate_scale(img, mode, maintain_aspect, scale, width, height)
-            resized_img = self.shrink_image_with_scale(img, scale, algorithm)
+            if first_in is None:
+                first_in = img.size
+            scale_used = self.calculate_scale(img, mode, maintain_aspect, scale, width, height)
+            resized_img = self.shrink_image_with_scale(img, scale_used, algorithm)
+            last_out = resized_img.size
             resized_img_np = np.array(resized_img).astype(np.float32) / 255.0
             resized_img_np = torch.from_numpy(resized_img_np)
             output_images.append(resized_img_np)
 
-        return (output_images,)
+        if first_in and last_out:
+            status = f"OK: {len(output_images)} image(s) — {first_in[0]}x{first_in[1]} → {last_out[0]}x{last_out[1]} ({resize_algorithm})"
+        else:
+            status = f"OK: {len(output_images)} image(s) ({resize_algorithm})"
+        push_node_status(unique_id, status)
+        return (output_images, status)
     
 
 class Soze_PadMask:
@@ -1507,25 +1594,27 @@ class Soze_ImageSizeWithMaximum:
             "required": {
                 "image": ("IMAGE", {}),
                 "max_long_edge": ("INT", {"default": 1280, "min": 64, "max": 8192, "step": 64}),
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("INT", "INT")
-    RETURN_NAMES = ("width", "height")
+    RETURN_TYPES = ("INT", "INT", "STRING")
+    RETURN_NAMES = ("width", "height", "status")
 
     FUNCTION = "check_size"
     CATEGORY = "soze"
 
-    def check_size(self, image, max_long_edge):
+    def check_size(self, image, max_long_edge, unique_id=None):
         if image is None:
-            return (False, 0, 0)
-        
+            push_node_status(unique_id, "Skipped: image is None")
+            return (0, 0, "Skipped: image is None")
+
         height, width = image.shape[1], image.shape[2]
         is_within_size = (height <= max_long_edge) and (width <= max_long_edge)
-        
+
         target_width = width
         target_height = height
-        
+
         if not is_within_size:
             aspect_ratio = width / height
             if width > height:
@@ -1534,8 +1623,13 @@ class Soze_ImageSizeWithMaximum:
             else:
                 target_height = max_long_edge
                 target_width = int(max_long_edge * aspect_ratio)
-                
-        return (target_width, target_height)
+
+        if is_within_size:
+            status = f"OK (within max): {width}x{height}"
+        else:
+            status = f"OK (downscaled to max {max_long_edge}): {width}x{height} → {target_width}x{target_height}"
+        push_node_status(unique_id, status)
+        return (target_width, target_height, status)
     
     
 class Soze_SaveImageWithAbsoluteFilename:
@@ -1553,7 +1647,7 @@ class Soze_SaveImageWithAbsoluteFilename:
                 "filename_prefix": ("STRING", {"default": "ComfyUI", "tooltip": "The prefix for the file to save. This may include formatting information such as %date:yyyy-MM-dd% or %Empty Latent Image.width% to include values from nodes."})
             },
             "hidden": {
-                "prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"
+                "prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO", "unique_id": "UNIQUE_ID",
             },
         }
 
@@ -1565,12 +1659,15 @@ class Soze_SaveImageWithAbsoluteFilename:
     CATEGORY = "image"
     DESCRIPTION = "Saves the input images to your ComfyUI output directory."
 
-    def save_images(self, images, filename_prefix="ComfyUI", prompt=None, extra_pnginfo=None):
+    def save_images(self, images, filename_prefix="ComfyUI", prompt=None, extra_pnginfo=None, unique_id=None):
         if images is None:
-            return()
+            push_node_status(unique_id, "Skipped: no images provided.")
+            return ()
         filename_prefix += self.prefix_append
         full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
         results = list()
+        last_path = None
+        total_bytes = 0
         for (batch_number, image) in enumerate(images):
             i = 255. * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
@@ -1588,7 +1685,13 @@ class Soze_SaveImageWithAbsoluteFilename:
                  file = f"{filename_with_batch_num}.png"
             else:
                 file = f"{filename_with_batch_num}_{counter:05}_.png"
-            img.save(os.path.join(full_output_folder, file), pnginfo=metadata, compress_level=self.compress_level)
+            out_path = os.path.join(full_output_folder, file)
+            img.save(out_path, pnginfo=metadata, compress_level=self.compress_level)
+            try:
+                total_bytes += os.path.getsize(out_path)
+            except OSError:
+                pass
+            last_path = out_path
             results.append({
                 "filename": file,
                 "subfolder": subfolder,
@@ -1596,6 +1699,8 @@ class Soze_SaveImageWithAbsoluteFilename:
             })
             counter += 1
 
-        return { "ui": { "images": results } }
+        status = f"OK: saved {len(images)} image(s), {total_bytes:,} bytes total. Last: {last_path}"
+        push_node_status(unique_id, status)
+        return {"ui": {"images": results, "text": [status]}}
 
 

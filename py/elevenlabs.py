@@ -4,6 +4,9 @@ import os
 
 from folder_paths import output_directory
 
+from .status_utils import EventLog, push_node_status, finalize_status
+
+
 def load_elevenlabs_api_key():
     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
     if not os.path.exists(env_path):
@@ -27,18 +30,19 @@ class Soze_ElevenLabsVoiceRetrieverNode:
             "required": {
                 "voice_id": ("STRING", {"default": ""}),
                 "sample_save_path": ("STRING", {"default": ""}),  # Local directory to save samples
-            }
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("voice_data",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("voice_data", "status")
     FUNCTION = "run"
     CATEGORY = "audio"
     OUTPUT_NODE = True
 
-    def run(self, voice_id, sample_save_path):
-        import tempfile
-        import shutil
+    def run(self, voice_id, sample_save_path, unique_id=None):
+        log = EventLog()
+        push_node_status(unique_id, f"Fetching voice: {voice_id}", log)
         api_key = load_elevenlabs_api_key()
         headers = {
             "xi-api-key": api_key
@@ -46,8 +50,12 @@ class Soze_ElevenLabsVoiceRetrieverNode:
         url = f"https://api.elevenlabs.io/v1/voices/{voice_id}"
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
+            headline = f"ERROR: voice fetch failed {response.status_code} {response.text[:200]}"
+            push_node_status(unique_id, headline, log)
             raise Exception(f"API call failed: {response.status_code} {response.text}")
         data = response.json()
+        voice_name = data.get('name', '(unknown)')
+        push_node_status(unique_id, f"Voice: {voice_name}", log)
 
         sample_files = []
         # Determine save directory within ComfyUI output directory
@@ -58,6 +66,7 @@ class Soze_ElevenLabsVoiceRetrieverNode:
 
         # Download all sample audio files by making a separate API call for each sample
         if "samples" in data and data["samples"]:
+            push_node_status(unique_id, f"Downloading {len(data['samples'])} sample(s)...", log)
             for idx, sample in enumerate(data["samples"]):
                 sample_id = sample.get("sample_id")
                 if sample_id:
@@ -84,6 +93,8 @@ class Soze_ElevenLabsVoiceRetrieverNode:
         # Return all other data as formatted text
         import json
         voice_data_text = json.dumps(data, indent=2)
-        return (voice_data_text,)
+        headline = f"OK: voice='{voice_name}', samples saved={len([s for s in sample_files if os.path.isfile(s)])}, dir={save_dir}"
+        push_node_status(unique_id, headline, log)
+        return (voice_data_text, finalize_status(headline, log))
 
 

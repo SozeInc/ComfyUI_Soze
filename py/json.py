@@ -13,6 +13,8 @@ from server import PromptServer
 from aiohttp import web
 # Build full paths and load images
 from PIL import Image, ImageOps
+
+from .status_utils import push_node_status
 import torch
 import numpy as np
 
@@ -237,6 +239,7 @@ class Soze_JSONGetArrayCount:
                 "json_input": ("STRING", {"multiline": True}),
                 "json_path": ("STRING", {"default": ""}),
             },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("INT", "STRING", )
@@ -251,7 +254,7 @@ class Soze_JSONGetArrayCount:
             return time.time()
         return float("NaN")
 
-    def calculate_array_count(self, json_input: str, json_path: str) -> Tuple[str, str]:
+    def calculate_array_count(self, json_input: str, json_path: str, unique_id=None) -> Tuple[str, str]:
         try:
             # Try JSON first (standard). If it fails, try ast.literal_eval
             try:
@@ -277,13 +280,16 @@ class Soze_JSONGetArrayCount:
                         data = data[list_key][int(idx)]
                     else:
                         data = data[key]
-            
+
             if not isinstance(data, list):
+                push_node_status(unique_id, f"ERROR: path '{json_path}' did not lead to an array.")
                 raise ValueError("The specified path does not lead to a JSON array")
 
             array_count = len(data)
+            push_node_status(unique_id, f"OK: array at '{json_path or '(root)'}' has {array_count} item(s).")
             return (array_count, json.dumps(data, indent=2) if isinstance(data, (dict, list)) else str(data),)
         except json.JSONDecodeError as e:
+            push_node_status(unique_id, f"ERROR: invalid JSON: {e}")
             raise ValueError("Invalid JSON input or Python literal (expected an array) Error: " + str(e))
 
 
@@ -292,7 +298,7 @@ class Soze_JSONGetArrayCount:
 class Soze_JSONArrayIteratorNode:
     stored_index = 0
     last_update_time = 0
-    
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -300,6 +306,7 @@ class Soze_JSONArrayIteratorNode:
                 "json_input": ("STRING", {"multiline": True}),
                 "index": ("INT", {"default": 0, "min": 0, "max": 1000000, "control_after_generate": True, "step": 1, "tooltip": "The row number to read from the CSV file."}),
             },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("STRING", "INT", "INT")
@@ -314,7 +321,7 @@ class Soze_JSONArrayIteratorNode:
             return time.time()
         return float("NaN")
 
-    def iterate_json_array(self, json_input: str, index: int) -> Tuple[str, int, int]:
+    def iterate_json_array(self, json_input: str, index: int, unique_id=None) -> Tuple[str, int, int]:
         try:
             # Try JSON first (standard). If it fails, try ast.literal_eval
             try:
@@ -328,26 +335,32 @@ class Soze_JSONArrayIteratorNode:
                 except Exception:
                     raise json.JSONDecodeError("Invalid JSON or Python literal", json_input, 0)
             if not isinstance(data, list):
+                push_node_status(unique_id, "ERROR: input is not a JSON array.")
                 raise ValueError("Input must be a JSON array")
 
             total_items = len(data)
             if total_items == 0:
+                push_node_status(unique_id, "Empty array (0 items).")
                 return ("", 0, 0)
 
             # Ensure index is within bounds (do not loop)
             if index < 0 or index >= total_items:
+                push_node_status(unique_id, f"ERROR: index {index} out of range (total={total_items}).")
                 raise IndexError(f"Index {index} out of range for array of length {total_items}")
 
             item = data[index]
-            
+
             if isinstance(item, (dict, list)):
                 item = json.dumps(item)
             else:
                 item = str(item)
-                
+
+            preview = item[:80] + ("…" if len(item) > 80 else "")
+            push_node_status(unique_id, f"OK: item {index+1}/{total_items} — {preview}")
             return (item, index, total_items)
         except json.JSONDecodeError as e:
-            raise ValueError("Invalid JSON input or Python literal (expected an array) Error: " + str(e)) 
+            push_node_status(unique_id, f"ERROR: invalid JSON: {e}")
+            raise ValueError("Invalid JSON input or Python literal (expected an array) Error: " + str(e))
         
 
 class Soze_JSONPathExtractorNode:
@@ -367,6 +380,7 @@ class Soze_JSONPathExtractorNode:
                 "path9": ("STRING", {"default": ""}),
                 "path10": ("STRING", {"default": ""}),
             },
+            "hidden": {"unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
@@ -374,7 +388,7 @@ class Soze_JSONPathExtractorNode:
     FUNCTION = "parse_json_values"
     CATEGORY = "utils"
 
-    def parse_json_values(self, json_string: str, path1: str, path2: str, path3: str, path4: str, path5: str, path6: str, path7: str, path8: str, path9: str, path10: str) -> tuple:
+    def parse_json_values(self, json_string: str, path1: str, path2: str, path3: str, path4: str, path5: str, path6: str, path7: str, path8: str, path9: str, path10: str, unique_id=None) -> tuple:
         try:
             if (json_string.strip().startswith("```json")):
                 json_string = json_string.replace("```json", "").replace("```", "").strip()
@@ -382,6 +396,8 @@ class Soze_JSONPathExtractorNode:
 
             paths = [path1, path2, path3, path4, path5, path6, path7, path8, path9, path10]
             results = []
+            hits = 0
+            misses = 0
 
             for path in paths:
                 if path.strip() == "":
@@ -401,12 +417,17 @@ class Soze_JSONPathExtractorNode:
                         results.append(json.dumps(value, indent=2))
                     else:
                         results.append(str(value))
+                    hits += 1
                 except Exception:
                     results.append("")
+                    misses += 1
+            push_node_status(unique_id, f"OK: {hits} hit(s), {misses} miss(es)")
             return {"ui": {"Value: ": results}, "result": (results[0], results[1], results[2], results[3], results[4], results[5], results[6], results[7], results[8], results[9])}
         except json.JSONDecodeError:
+            push_node_status(unique_id, "ERROR: invalid JSON string.")
             raise ValueError("Invalid JSON string")
         except Exception:
+            push_node_status(unique_id, "ERROR: invalid path or key not found.")
             raise ValueError("Invalid path or key not found")
 
     @classmethod
