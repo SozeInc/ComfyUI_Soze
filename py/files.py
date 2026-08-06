@@ -1,6 +1,8 @@
 import logging
 import os
 import re
+import shutil
+import zipfile
 
 import folder_paths
 import requests
@@ -312,3 +314,271 @@ class Soze_DownloadURL:
         headline = f"OK: {bytes_written:,} bytes -> {target}"
         push_node_status(unique_id, headline, log)
         return (target, finalize_status(headline, log))
+
+
+class Soze_SaveFileToOutput:
+    """Copy a file from disk into the ComfyUI output directory.
+
+    The destination filename is taken from `filename_path` (a relative path
+    under the output dir, with or without an extension). The extension is
+    always taken from the SOURCE file — if `filename_path` already ends with
+    a different extension, it is replaced. If `overwrite_file` is False and
+    the target exists, a `_NNNNN` suffix is appended to keep both copies.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "source_filepath": ("STRING", {
+                    "default": "",
+                    "forceInput": True,
+                    "tooltip": "Absolute path to the source file to copy.",
+                }),
+                "filename_path": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Destination filename (or subpath) under the output dir. "
+                               "Extension is derived from the source file and will be "
+                               "appended (or replaced) automatically.",
+                }),
+                "overwrite_file": ("BOOLEAN", {"default": False}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("saved_filepath", "saved_filename", "status")
+    FUNCTION = "save_file"
+    CATEGORY = "soze"
+    OUTPUT_NODE = True
+
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
+        return float("NaN")
+
+    def save_file(self, source_filepath, filename_path, overwrite_file, unique_id=None):
+        log = EventLog()
+
+        src = (source_filepath or "").strip()
+        if not src:
+            headline = "Skipped: source_filepath is empty."
+            push_node_status(unique_id, headline, log)
+            return ("", "", finalize_status(headline, log))
+
+        if not os.path.isfile(src):
+            headline = f"ERROR: source file not found: {src}"
+            push_node_status(unique_id, headline, log)
+            raise FileNotFoundError(headline)
+
+        dest_rel = (filename_path or "").strip()
+        if not dest_rel:
+            headline = "Skipped: filename_path is empty."
+            push_node_status(unique_id, headline, log)
+            return ("", "", finalize_status(headline, log))
+
+        # Derive extension from the source file (without the leading dot).
+        src_ext = os.path.splitext(src)[1]  # ".png", ".mp4", or "" if none
+
+        # Normalize the destination path. If the caller already typed the same
+        # extension, leave it; otherwise strip whatever extension they typed
+        # and replace it with the source's extension.
+        dest_rel = os.path.normpath(dest_rel)
+        dest_root, dest_ext = os.path.splitext(dest_rel)
+        if src_ext:
+            if dest_ext.lower() == src_ext.lower():
+                target_rel = dest_rel  # already correct
+            else:
+                target_rel = dest_root + src_ext
+        else:
+            target_rel = dest_rel  # source has no extension; honor what was typed
+
+        output_dir = folder_paths.get_output_directory()
+        target_abs = os.path.join(output_dir, target_rel)
+
+        # Don't allow paths to escape the output dir (e.g. "../foo").
+        target_abs_norm = os.path.abspath(target_abs)
+        output_dir_norm = os.path.abspath(output_dir)
+        if not (target_abs_norm == output_dir_norm
+                or target_abs_norm.startswith(output_dir_norm + os.sep)):
+            headline = f"ERROR: target escapes output dir: {target_abs_norm}"
+            push_node_status(unique_id, headline, log)
+            raise ValueError(headline)
+
+        os.makedirs(os.path.dirname(target_abs_norm), exist_ok=True)
+
+        # Refuse to copy a file onto itself.
+        try:
+            if os.path.exists(target_abs_norm) and os.path.samefile(src, target_abs_norm):
+                headline = f"Skipped: source and destination are the same file: {target_abs_norm}"
+                push_node_status(unique_id, headline, log)
+                return (target_abs_norm, os.path.basename(target_abs_norm),
+                        finalize_status(headline, log))
+        except OSError:
+            pass  # samefile can raise on weird FS situations — just continue
+
+        if not overwrite_file and os.path.exists(target_abs_norm):
+            base, ext = os.path.splitext(target_abs_norm)
+            counter = 1
+            while True:
+                candidate = f"{base}_{counter:05d}{ext}"
+                if not os.path.exists(candidate):
+                    target_abs_norm = candidate
+                    break
+                counter += 1
+
+        try:
+            shutil.copy2(src, target_abs_norm)
+        except Exception as e:
+            headline = f"ERROR copying {src} -> {target_abs_norm}: {e!r}"
+            push_node_status(unique_id, headline, log)
+            raise
+
+        try:
+            size = os.path.getsize(target_abs_norm)
+        except OSError:
+            size = -1
+
+        saved_filename = os.path.basename(target_abs_norm)
+        size_str = f"{size:,} bytes" if size >= 0 else "unknown size"
+        headline = f"OK: {size_str} -> {target_abs_norm}"
+        push_node_status(unique_id, headline, log)
+        return (target_abs_norm, saved_filename, finalize_status(headline, log))
+
+
+class Soze_ExtractZipToOutput:
+    """Extract a .zip archive into a subfolder of the ComfyUI output directory.
+
+    The destination is `<output_dir>/<folder_path>`. The folder is created if
+    it doesn't exist. Entries inside the archive that would extract outside
+    the destination ("zip-slip" paths) are refused.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "zip_filepath": ("STRING", {
+                    "default": "",
+                    "forceInput": True,
+                    "tooltip": "Absolute path to the .zip file to extract.",
+                }),
+                "folder_path": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Destination folder under the ComfyUI output dir. "
+                               "Leave blank to extract into the output dir root.",
+                }),
+                "overwrite_existing": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "If False, files that already exist are skipped.",
+                }),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("STRING", "INT", "INT", "STRING")
+    RETURN_NAMES = ("destination_folder", "extracted_count", "skipped_count", "status")
+    FUNCTION = "extract_zip"
+    CATEGORY = "soze"
+    OUTPUT_NODE = True
+
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
+        return float("NaN")
+
+    def extract_zip(self, zip_filepath, folder_path, overwrite_existing, unique_id=None):
+        log = EventLog()
+
+        src = (zip_filepath or "").strip()
+        if not src:
+            headline = "Skipped: zip_filepath is empty."
+            push_node_status(unique_id, headline, log)
+            return ("", 0, 0, finalize_status(headline, log))
+
+        if not os.path.isfile(src):
+            headline = f"ERROR: zip file not found: {src}"
+            push_node_status(unique_id, headline, log)
+            raise FileNotFoundError(headline)
+
+        if not zipfile.is_zipfile(src):
+            headline = f"ERROR: not a valid zip archive: {src}"
+            push_node_status(unique_id, headline, log)
+            raise ValueError(headline)
+
+        output_dir = folder_paths.get_output_directory()
+        output_dir_norm = os.path.abspath(output_dir)
+
+        rel = (folder_path or "").strip()
+        if rel:
+            rel = os.path.normpath(rel)
+            dest_abs = os.path.abspath(os.path.join(output_dir, rel))
+        else:
+            dest_abs = output_dir_norm
+
+        # Refuse paths that escape the output dir (e.g. "../foo").
+        if not (dest_abs == output_dir_norm
+                or dest_abs.startswith(output_dir_norm + os.sep)):
+            headline = f"ERROR: destination escapes output dir: {dest_abs}"
+            push_node_status(unique_id, headline, log)
+            raise ValueError(headline)
+
+        os.makedirs(dest_abs, exist_ok=True)
+        push_node_status(unique_id, f"Extracting {os.path.basename(src)} -> {dest_abs}", log)
+
+        extracted = 0
+        skipped = 0
+        unsafe = 0
+
+        try:
+            with zipfile.ZipFile(src, "r") as zf:
+                for member in zf.infolist():
+                    member_name = member.filename
+                    if not member_name:
+                        continue
+
+                    # Compute the absolute target path and ensure it stays
+                    # inside dest_abs (zip-slip protection).
+                    target = os.path.abspath(os.path.join(dest_abs, member_name))
+                    if not (target == dest_abs
+                            or target.startswith(dest_abs + os.sep)):
+                        unsafe += 1
+                        push_node_status(
+                            unique_id,
+                            f"REFUSED unsafe entry: {member_name}",
+                            log,
+                        )
+                        continue
+
+                    # Directory entry — just ensure it exists.
+                    if member.is_dir():
+                        os.makedirs(target, exist_ok=True)
+                        continue
+
+                    # Skip if the target already exists and overwrite is off.
+                    if os.path.exists(target) and not overwrite_existing:
+                        skipped += 1
+                        continue
+
+                    # Ensure the parent directory exists, then extract.
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    with zf.open(member, "r") as src_f, open(target, "wb") as dst_f:
+                        shutil.copyfileobj(src_f, dst_f)
+                    extracted += 1
+        except zipfile.BadZipFile as e:
+            headline = f"ERROR: bad zip archive: {e!r}"
+            push_node_status(unique_id, headline, log)
+            raise
+        except Exception as e:
+            headline = f"ERROR extracting {src}: {e!r}"
+            push_node_status(unique_id, headline, log)
+            raise
+
+        parts = [f"extracted {extracted}"]
+        if skipped:
+            parts.append(f"skipped {skipped} existing")
+        if unsafe:
+            parts.append(f"refused {unsafe} unsafe")
+        headline = f"OK: {', '.join(parts)} -> {dest_abs}"
+        push_node_status(unique_id, headline, log)
+        return (dest_abs, extracted, skipped, finalize_status(headline, log))

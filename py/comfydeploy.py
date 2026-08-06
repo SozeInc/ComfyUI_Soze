@@ -8,6 +8,7 @@ import folder_paths
 import numpy as np
 import requests
 import torch
+from comfy.utils import common_upscale
 from azure.storage.blob import BlobServiceClient
 from PIL import Image, ImageOps
 from server import PromptServer
@@ -72,7 +73,8 @@ def upload_to_azure_storage(image):
     return url    
 
 class Soze_ComfyDeployAPINode:
-    def IS_CHANGED(self, *args, **kwargs):
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
         return True
 
     @classmethod
@@ -633,7 +635,8 @@ class Soze_ComfyDeployAPIImageParameters:
     
     
 class Soze_ComfyDeployCacheAPIRunIDs:
-    def IS_CHANGED(self, *args, **kwargs):
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
         return True
 
     @classmethod
@@ -706,7 +709,8 @@ class Soze_ComfyDeployCacheAPIRunIDs:
         return ()
 
 class Soze_ComfyDeployCachedAPIRunInfo:
-    def IS_CHANGED(self, *args, **kwargs):
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
         return True
 
     @classmethod
@@ -770,7 +774,8 @@ class Soze_ComfyDeployCachedAPIRunInfo:
     
     
 class Soze_ComfyDeployRetrieveCachedAPIRunIDs:
-    def IS_CHANGED(self, *args, **kwargs):
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
         return True
 
     @classmethod
@@ -853,7 +858,8 @@ class Soze_ComfyDeployRetrieveCachedAPIRunIDs:
 
 
 class Soze_ComfyDeployClearCachedAPIRunIDs:
-    def IS_CHANGED(self, *args, **kwargs):
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
         return True
 
     @classmethod
@@ -935,7 +941,8 @@ class Soze_ComfyDeployClearCachedAPIRunIDs:
     
     
 class Soze_ComfyDeployDownloadAPIFiles:
-    def IS_CHANGED(self, *args, **kwargs):
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
         return True
 
     @classmethod
@@ -1173,7 +1180,24 @@ class Soze_ComfyDeployDownloadAPIFiles:
                         logger.error("Failed to load image %s: %s", img_source, e)
 
                 if out_images:
-                    out_images_tensor = torch.cat(out_images, dim=0)
+                    # Images can have different H/W; torch.cat requires matching dims
+                    # except dim 0. Resize subsequent images to the first image's
+                    # spatial size (matches ComfyUI's batch-loader convention).
+                    base = out_images[0]
+                    base_h, base_w = base.shape[1], base.shape[2]
+                    aligned = [base]
+                    resized_count = 0
+                    for img in out_images[1:]:
+                        if img.shape[1] != base_h or img.shape[2] != base_w:
+                            # common_upscale expects [B, C, H, W]
+                            img = common_upscale(
+                                img.movedim(-1, 1), base_w, base_h, "bilinear", "center"
+                            ).movedim(1, -1)
+                            resized_count += 1
+                        aligned.append(img)
+                    out_images_tensor = torch.cat(aligned, dim=0)
+                    if resized_count:
+                        send_status(f"Resized {resized_count} of {len(out_images)} image(s) to {base_w}x{base_h} for batching.")
                 else:
                     out_images_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
 

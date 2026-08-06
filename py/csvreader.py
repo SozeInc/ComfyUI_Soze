@@ -2,6 +2,7 @@ import csv
 import hashlib
 import logging
 import os
+import random
 from pathlib import Path
 
 import folder_paths
@@ -21,25 +22,55 @@ def _row_preview(row: list[str], max_len: int = 80) -> str:
 _CSV_DIR = (Path(__file__).parent / "csv_files").resolve()
 
 
+def _looks_absolute(raw: str) -> bool:
+    """True if the string looks like an absolute path on any platform.
+
+    `Path.is_absolute()` is platform-specific (e.g. WindowsPath rejects
+    forward-slash POSIX paths). We accept POSIX absolutes, Windows drive-letter
+    paths, and UNC shares too.
+    """
+    if not raw:
+        return False
+    if raw.startswith("/") or raw.startswith("\\\\"):
+        return True
+    if len(raw) >= 2 and raw[1] == ":" and raw[0].isalpha():
+        return True
+    try:
+        return Path(raw).is_absolute()
+    except Exception:
+        return False
+
+
 def _resolve_csv_path(csv_filename_path: str) -> Path:
     """Resolve a user-supplied CSV path.
 
-    - Absolute paths are accepted as-is (so you can load from anywhere on disk).
-    - Relative paths resolve under the bundled csv_files dir, and `..` escape
-      attempts are rejected.
+    - Absolute paths (POSIX, Windows drive-letter, UNC) are accepted as-is.
+    - Anything that already exists as a file on disk is accepted as-is too.
+    - Otherwise the path resolves under the bundled csv_files dir, and `..`
+      escape attempts are rejected.
     """
     raw = csv_filename_path.strip()
-    raw_path = Path(raw)
-    if raw_path.is_absolute():
-        candidate = raw_path.resolve()
-    else:
-        candidate = (_CSV_DIR / raw).resolve()
-        try:
-            candidate.relative_to(_CSV_DIR)
-        except ValueError:
-            raise ValueError(
-                f"CSV path escapes csv_files directory: {csv_filename_path!r}"
-            )
+
+    # 1) Looks absolute? Take it as-is.
+    if _looks_absolute(raw):
+        candidate = Path(raw).resolve()
+        if not candidate.is_file():
+            raise FileNotFoundError(f"CSV file not found: {candidate}")
+        return candidate
+
+    # 2) Exists as-given (e.g. a relative path from CWD)? Take it.
+    direct = Path(raw)
+    if direct.is_file():
+        return direct.resolve()
+
+    # 3) Fall back to the bundled csv_files dir.
+    candidate = (_CSV_DIR / raw).resolve()
+    try:
+        candidate.relative_to(_CSV_DIR)
+    except ValueError:
+        raise ValueError(
+            f"CSV path escapes csv_files directory: {csv_filename_path!r}"
+        )
     if not candidate.is_file():
         raise FileNotFoundError(f"CSV file not found: {candidate}")
     return candidate
@@ -260,3 +291,106 @@ class Soze_CSVReaderXLora:
         )
         push_node_status(unique_id, headline, log)
         return tuple(output + [entire_line, row_count, lora_full_path, lora_name_only, lora_index + 1, finalize_status(headline, log)])
+
+
+class Soze_CSVRandomReader:
+    """Pick N random rows from a CSV file (any path) or inline csv_text.
+
+    - `csv_filename_path` accepts absolute paths anywhere on disk (POSIX,
+      Windows drive-letter, or UNC). Relative paths fall back to the bundled
+      py/csv_files directory.
+    - If `csv_text` is non-empty, it takes precedence over the file path.
+    - With `seed > 0` the picks are deterministic and the node is cacheable.
+      With `seed == 0` the node re-runs every prompt for a fresh draw.
+    - `allow_repeats=False` uses random.sample (unique picks, clamped to row
+      count). `allow_repeats=True` uses random.choice each time.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "csv_filename_path": ("STRING", {"default": "", "multiline": True, "tooltip": "Absolute path or path relative to py/csv_files. Ignored if csv_text is non-empty."}),
+                "num_rows": ("INT", {"default": 1, "min": 1, "max": 10000, "step": 1, "tooltip": "How many rows to randomly pick."}),
+            },
+            "optional": {
+                "csv_text": ("STRING", {"default": "", "multiline": True, "tooltip": "Inline CSV. Takes precedence over csv_filename_path when non-empty."}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "control_after_generate": True, "tooltip": "0 = nondeterministic; any other value seeds the RNG for reproducible picks."}),
+                "allow_repeats": ("BOOLEAN", {"default": False, "tooltip": "If True, the same row may be picked more than once when num_rows exceeds available rows."}),
+                "skip_header": ("BOOLEAN", {"default": False, "tooltip": "Skip the first row (treat it as a header)."}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_NAMES = (
+        'Column_1', 'Column_2', 'Column_3', 'Column_4', 'Column_5',
+        'Column_6', 'Column_7', 'Column_8', 'Column_9', 'Column_10',
+        'First_Row_Line', 'Selected_Lines', 'Selected_Count', 'Total_Rows', 'status',
+    )
+    RETURN_TYPES = ("STRING",) * 11 + ("STRING", "INT", "INT", "STRING")
+    FUNCTION = "read_random_rows"
+    CATEGORY = "utils"
+
+    @classmethod
+    def IS_CHANGED(cls, csv_filename_path, num_rows, csv_text="", seed=0, allow_repeats=False, skip_header=False, unique_id=None):
+        # Deterministic when seed > 0 → cacheable on (source, knobs).
+        if seed and seed != 0:
+            if csv_text and csv_text.strip():
+                base = "text:" + hashlib.sha1(csv_text.encode("utf-8")).hexdigest()
+            elif csv_filename_path and csv_filename_path.strip():
+                try:
+                    base = _file_signature(_resolve_csv_path(csv_filename_path))
+                except (FileNotFoundError, ValueError):
+                    base = f"missing:{csv_filename_path}"
+            else:
+                base = "empty"
+            return f"{base}|n={num_rows}|seed={seed}|repeats={allow_repeats}|skip_header={skip_header}"
+        return float("NaN")
+
+    def read_random_rows(self, csv_filename_path, num_rows, csv_text="", seed=0,
+                         allow_repeats=False, skip_header=False, unique_id=None):
+        log = EventLog()
+        source = "inline csv_text" if csv_text and csv_text.strip() else (csv_filename_path or "(empty)")
+        push_node_status(unique_id, f"Source: {source}", log)
+
+        try:
+            rows = _load_rows(csv_filename_path, csv_text)
+        except Exception as e:
+            push_node_status(unique_id, f"ERROR loading CSV: {e!r}", log)
+            raise
+
+        if skip_header and rows:
+            push_node_status(unique_id, "Skipping header row.", log)
+            rows = rows[1:]
+
+        total = len(rows)
+        push_node_status(unique_id, f"Loaded {total} row(s) (after header skip={skip_header}).", log)
+
+        if total == 0:
+            headline = "Empty: 0 rows after loading."
+            push_node_status(unique_id, headline, log)
+            return tuple([""] * 11 + ["", 0, 0, finalize_status(headline, log)])
+
+        rng = random.Random(seed) if seed and seed != 0 else random.Random()
+
+        if allow_repeats:
+            picks = [rng.choice(rows) for _ in range(num_rows)]
+        else:
+            n = min(num_rows, total)
+            if num_rows > total:
+                push_node_status(unique_id, f"Note: requested {num_rows} but only {total} unique rows available; returning {n}.", log)
+            picks = rng.sample(rows, n)
+
+        first = picks[0]
+        first_outputs, first_line = _row_to_outputs(first)
+
+        # Selected_Lines: each picked row joined with commas, rows separated by newlines.
+        selected_lines = "\n".join(",".join(r) for r in picks)
+
+        headline = (
+            f"OK: picked {len(picks)} of {total} row(s) "
+            f"(seed={seed if seed else 'random'}, repeats={'on' if allow_repeats else 'off'}); "
+            f"first={_row_preview(first)}"
+        )
+        push_node_status(unique_id, headline, log)
+        return tuple(first_outputs + [first_line, selected_lines, len(picks), total, finalize_status(headline, log)])

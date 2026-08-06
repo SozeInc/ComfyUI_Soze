@@ -1,10 +1,12 @@
 import torch
 import os
+import random
 import re
 import numpy as np
 import hashlib
 import re
 import requests
+import ast
 import json
 from numpy import ndarray
 from comfy.cli_args import args
@@ -36,6 +38,24 @@ from comfy.utils import ProgressBar, common_upscale
 
 import node_helpers
 import folder_paths
+
+
+def _folder_not_found_hint(path: str) -> str:
+    """Explain *why* a folder path failed isdir(), to speed up diagnosis."""
+    try:
+        if os.path.isfile(path):
+            return " (this is a file, not a folder)"
+        parent = os.path.dirname(path.rstrip("/\\"))
+        if parent and os.path.isdir(parent):
+            return f" (parent {parent!r} exists, but this subfolder does not)"
+        if parent and not os.path.exists(parent):
+            return (f" (parent {parent!r} is also missing — is the drive/mount "
+                    "accessible from where ComfyUI runs? A path from another "
+                    "machine/OS won't resolve here)")
+    except Exception:
+        pass
+    return ""
+
 
 def pil2tensor(images: Image.Image | list[Image.Image]) -> torch.Tensor:
     """Converts a PIL Image or a list of PIL Images to a tensor."""
@@ -172,10 +192,14 @@ class Soze_LoadImagesFromFolder:
 
     def load_images(self, Input_Folder, Image_Load_Count, index, unique_id=None):
         log = EventLog()
+        # Clean the path: trailing whitespace/newlines and surrounding quotes are
+        # a very common copy-paste artifact that makes a valid path fail isdir().
+        Input_Folder = (Input_Folder or "").strip().strip('"').strip("'").rstrip()
         push_node_status(unique_id, f"Scanning {Input_Folder}", log)
         if not os.path.isdir(Input_Folder):
-            push_node_status(unique_id, f"ERROR: folder not found: {Input_Folder}", log)
-            raise FileNotFoundError(f"Folder not found: {Input_Folder}")
+            headline = f"ERROR: folder not found: {Input_Folder!r}{_folder_not_found_hint(Input_Folder)}"
+            push_node_status(unique_id, headline, log)
+            raise FileNotFoundError(headline)
         dir_files = os.listdir(Input_Folder)
         if len(dir_files) == 0:
             push_node_status(unique_id, f"ERROR: folder is empty: {Input_Folder}", log)
@@ -208,7 +232,10 @@ class Soze_LoadImagesFromFolder:
             if limit_images and image_count >= Image_Load_Count:
                 break
 
-            input_filepath = folder_paths.get_annotated_filepath(image_path)
+            # image_path is already an absolute path (folder + filename); do NOT
+            # route it through get_annotated_filepath, which is only for
+            # input-dir-relative annotated names and rejects arbitrary paths.
+            input_filepath = image_path
             input_filename = os.path.basename(input_filepath)
             input_filename_no_ext = os.path.splitext(input_filename)[0]
 
@@ -271,9 +298,14 @@ class Soze_LoadImagesFromFolder:
                 image1 = torch.cat((image1, image2), dim=0)
 
             for mask2 in masks[1:]:
-                if mask1.shape != mask2.shape:
-                    mask2 = torch.nn.functional.interpolate(mask2.unsqueeze(0).unsqueeze(0), size=(mask1.shape[-2], mask1.shape[-1]), mode='bilinear', align_corners=False)
-                    mask2 = mask2.squeeze(0)
+                # Compare spatial dims only — mask1's batch dim grows each cat.
+                if mask1.shape[1:] != mask2.shape[1:]:
+                    # mask2 is [1, H, W]; interpolate needs 4D [N, C, H, W].
+                    mask2 = torch.nn.functional.interpolate(
+                        mask2.unsqueeze(0),
+                        size=(mask1.shape[-2], mask1.shape[-1]),
+                        mode='bilinear', align_corners=False,
+                    ).squeeze(0)
                 mask1 = torch.cat((mask1, mask2), dim=0)
 
             input_filenamepath = image_path_list[0]
@@ -319,7 +351,10 @@ class Soze_LoadImageFromFilepath:
             push_node_status(unique_id, f"ERROR: file not found: {Image_Filepath}")
             raise FileNotFoundError(f"File not found: {Image_Filepath}")
 
-        input_filepath = folder_paths.get_annotated_filepath(Image_Filepath)
+        # Image_Filepath is an arbitrary absolute path (validated to exist
+        # above); use it directly rather than get_annotated_filepath, which
+        # only accepts input-dir-relative annotated names.
+        input_filepath = Image_Filepath
         input_filename = os.path.basename(input_filepath)
         input_filename_no_ext = os.path.splitext(input_filename)[0]
 
@@ -394,6 +429,7 @@ class Soze_LoadImagesFromFolderXLora:
 
     def load_images(self, Input_Folder, index, start_lora_name, lora_count, unique_id=None):
         log = EventLog()
+        Input_Folder = (Input_Folder or "").strip().strip('"').strip("'").rstrip()
         push_node_status(unique_id, f"Folder: {Input_Folder}", log)
         if not os.path.isdir(Input_Folder):
             push_node_status(unique_id, f"ERROR: folder not found: {Input_Folder}", log)
@@ -444,7 +480,9 @@ class Soze_LoadImagesFromFolderXLora:
             push_node_status(unique_id, f"ERROR: image path is a directory: {image_path}", log)
             raise ValueError(f"Image path is a directory: {image_path}")
 
-        input_filepath = folder_paths.get_annotated_filepath(image_path)
+        # image_path is already an absolute path (Input_Folder + filename); use
+        # it directly — get_annotated_filepath rejects arbitrary absolute paths.
+        input_filepath = image_path
         input_filename = os.path.basename(input_filepath)
         input_filename_no_ext = os.path.splitext(input_filename)[0]
 
@@ -547,26 +585,32 @@ class Soze_BatchProcessSwitch:
         input_filename = ""
         input_filename_no_ext = ""
 
+        def _resolve(p):
+            # Passthrough paths often come from folder loaders as absolute paths.
+            # get_annotated_filepath only accepts input-dir-relative annotated
+            # names and rejects absolute paths, so prefer the raw path when it's
+            # already absolute or exists on disk.
+            if os.path.isabs(p) or os.path.exists(p):
+                return p
+            try:
+                return folder_paths.get_annotated_filepath(p)
+            except Exception:
+                return p
+
         if Input == "Image":
             if Image_Filename_Path_Passthrough != "":
-                try: input_filenamepath = folder_paths.get_annotated_filepath(Image_Filename_Path_Passthrough)
-                except Exception: pass
-                try: input_filename = os.path.basename(input_filenamepath)
-                except Exception: pass
-                try: input_filename_no_ext = os.path.splitext(input_filename)[0]
-                except Exception: pass
+                input_filenamepath = _resolve(Image_Filename_Path_Passthrough)
+                input_filename = os.path.basename(input_filenamepath) if input_filenamepath else ""
+                input_filename_no_ext = os.path.splitext(input_filename)[0] if input_filename else ""
             connected = "Image" if Image is not None else "MISSING Image"
             status = f"Branch: Image ({connected}); filename={input_filename or '(none)'}"
             push_node_status(unique_id, status)
             return (Image, input_filenamepath, input_filename, input_filename_no_ext, status)
         else:
             if Image_Batch_Filename_Path_Passthrough != "":
-                try: input_filenamepath = folder_paths.get_annotated_filepath(Image_Batch_Filename_Path_Passthrough)
-                except Exception: pass
-                try: input_filename = os.path.basename(input_filenamepath)
-                except Exception: pass
-                try: input_filename_no_ext = os.path.splitext(input_filename)[0]
-                except Exception: pass
+                input_filenamepath = _resolve(Image_Batch_Filename_Path_Passthrough)
+                input_filename = os.path.basename(input_filenamepath) if input_filenamepath else ""
+                input_filename_no_ext = os.path.splitext(input_filename)[0] if input_filename else ""
             connected = "Image Batch" if Image_Batch is not None else "MISSING Image Batch"
             status = f"Branch: Image Batch ({connected}); filename={input_filename or '(none)'}"
             push_node_status(unique_id, status)
@@ -1702,5 +1746,900 @@ class Soze_SaveImageWithAbsoluteFilename:
         status = f"OK: saved {len(images)} image(s), {total_bytes:,} bytes total. Last: {last_path}"
         push_node_status(unique_id, status)
         return {"ui": {"images": results, "text": [status]}}
+
+
+class Soze_LoadRandomImagesFromFolder:
+    """Pick N random images from a folder and return them as a single batch.
+
+    Different image dimensions are normalized by resizing each subsequent image
+    to match the first one (matches ComfyUI's standard batch-loader convention).
+    """
+
+    VALID_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif', '.tiff')
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_folder": ("STRING", {"default": "", "tooltip": "Absolute or relative folder path."}),
+                "image_count": ("INT", {"default": 1, "min": 1, "max": 1000, "step": 1, "tooltip": "How many images to randomly select."}),
+            },
+            "optional": {
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF, "control_after_generate": True, "tooltip": "0 = nondeterministic; any other value seeds the RNG for reproducible picks."}),
+                "allow_repeats": ("BOOLEAN", {"default": False, "tooltip": "If True, the same image may be picked more than once when image_count exceeds the folder size."}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "STRING", "STRING")
+    RETURN_NAMES = ("Image_Batch", "Mask_Batch", "Loaded_Count", "Filenames", "status")
+    FUNCTION = "load_random_images"
+    CATEGORY = "image"
+
+    @classmethod
+    def IS_CHANGED(cls, input_folder, image_count, seed=0, allow_repeats=False, unique_id=None):
+        # If seed > 0, IS_CHANGED is purely a function of inputs → cacheable.
+        # If seed == 0, force re-execution every prompt.
+        if seed and seed != 0:
+            return f"{input_folder}|{image_count}|{seed}|{allow_repeats}"
+        return float("NaN")
+
+    def _load_one(self, image_path):
+        """Open one image into a (image_tensor, mask_tensor) pair, both batched as [1, H, W, *]."""
+        img = node_helpers.pillow(Image.open, image_path)
+        img = node_helpers.pillow(ImageOps.exif_transpose, img)
+        if img.mode == 'I':
+            img = img.point(lambda x: x * (1 / 255))
+        rgb = img.convert("RGB")
+        arr = np.array(rgb).astype(np.float32) / 255.0
+        image_tensor = torch.from_numpy(arr)[None,]
+        if 'A' in img.getbands():
+            mask_arr = np.array(img.getchannel('A')).astype(np.float32) / 255.0
+            mask_tensor = (1.0 - torch.from_numpy(mask_arr)).unsqueeze(0)
+        else:
+            mask_tensor = torch.zeros((1, image_tensor.shape[1], image_tensor.shape[2]), dtype=torch.float32)
+        return image_tensor, mask_tensor
+
+    def load_random_images(self, input_folder, image_count, seed=0, allow_repeats=False, unique_id=None):
+        log = EventLog()
+        push_node_status(unique_id, f"Scanning {input_folder}", log)
+
+        if not input_folder or not os.path.isdir(input_folder):
+            headline = f"ERROR: folder not found: {input_folder!r}"
+            push_node_status(unique_id, headline, log)
+            raise FileNotFoundError(f"Folder not found: {input_folder}")
+
+        try:
+            entries = os.listdir(input_folder)
+        except OSError as e:
+            headline = f"ERROR listing folder: {e}"
+            push_node_status(unique_id, headline, log)
+            raise
+
+        candidates = sorted(
+            os.path.join(input_folder, f)
+            for f in entries
+            if f.lower().endswith(self.VALID_EXTENSIONS) and os.path.isfile(os.path.join(input_folder, f))
+        )
+        push_node_status(unique_id, f"Found {len(candidates)} image(s) matching {self.VALID_EXTENSIONS}", log)
+
+        if not candidates:
+            headline = f"ERROR: no images in {input_folder}"
+            push_node_status(unique_id, headline, log)
+            raise FileNotFoundError(f"No image files found in folder: {input_folder}")
+
+        rng = random.Random(seed) if seed and seed != 0 else random.Random()
+
+        if allow_repeats:
+            picks = [rng.choice(candidates) for _ in range(image_count)]
+        else:
+            n = min(image_count, len(candidates))
+            if image_count > len(candidates):
+                push_node_status(unique_id, f"Note: requested {image_count} but only {len(candidates)} unique images; returning {n}.", log)
+            picks = rng.sample(candidates, n)
+
+        push_node_status(unique_id, f"Picked {len(picks)} image(s) (seed={seed if seed else 'random'}, repeats={'on' if allow_repeats else 'off'})", log)
+
+        images = []
+        masks = []
+        loaded_filenames = []
+        for path in picks:
+            try:
+                img_tensor, mask_tensor = self._load_one(path)
+            except Exception as e:
+                logger.error("Failed to load %s: %s", path, e)
+                push_node_status(unique_id, f"Skipping {os.path.basename(path)}: {e!r}", log)
+                continue
+            images.append(img_tensor)
+            masks.append(mask_tensor)
+            loaded_filenames.append(os.path.basename(path))
+
+        if not images:
+            headline = "ERROR: every selected image failed to load."
+            push_node_status(unique_id, headline, log)
+            raise RuntimeError(headline)
+
+        # Normalize sizes so torch.cat doesn't blow up.
+        base = images[0]
+        base_h, base_w = base.shape[1], base.shape[2]
+        aligned_imgs = [base]
+        aligned_masks = [masks[0]]
+        resized = 0
+        for img, msk in zip(images[1:], masks[1:]):
+            if img.shape[1] != base_h or img.shape[2] != base_w:
+                img = common_upscale(img.movedim(-1, 1), base_w, base_h, "bilinear", "center").movedim(1, -1)
+                msk = torch.nn.functional.interpolate(
+                    msk.unsqueeze(0), size=(base_h, base_w), mode="bilinear", align_corners=False,
+                ).squeeze(0)
+                resized += 1
+            aligned_imgs.append(img)
+            aligned_masks.append(msk)
+
+        image_batch = torch.cat(aligned_imgs, dim=0)
+        mask_batch = torch.cat(aligned_masks, dim=0)
+
+        if resized:
+            push_node_status(unique_id, f"Resized {resized} of {len(aligned_imgs)} image(s) to {base_w}x{base_h} for batching.", log)
+
+        headline = f"OK: loaded {len(aligned_imgs)} image(s) at {base_w}x{base_h}"
+        push_node_status(unique_id, headline, log)
+        return (
+            image_batch,
+            mask_batch,
+            len(aligned_imgs),
+            "\n".join(loaded_filenames),
+            finalize_status(headline, log),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Scribble XDoG — eXtended Difference-of-Gaussians sketch / scribble filter
+# ---------------------------------------------------------------------------
+
+
+def _xdog_gaussian_blur(gray_2d, sigma):
+    """Gaussian-blur a [H,W] float32 tensor on CPU using torchvision.
+
+    torchvision's gaussian_blur wants (..., C, H, W) and an odd kernel size; we
+    derive kernel_size from sigma the same way scipy/opencv do (2*ceil(3σ)+1).
+    """
+    from torchvision.transforms.functional import gaussian_blur
+    if sigma <= 0:
+        return gray_2d
+    k = max(3, 2 * int(3 * sigma + 0.5) + 1)
+    t = gray_2d.unsqueeze(0).unsqueeze(0)  # [1, 1, H, W]
+    blurred = gaussian_blur(t, kernel_size=[k, k], sigma=[float(sigma), float(sigma)])
+    return blurred.squeeze(0).squeeze(0)
+
+
+def _xdog_one_frame(rgb_hwc, sigma, k, sharpness_p, epsilon, phi, gamma,
+                    invert, binarize, binarize_threshold):
+    """Run XDoG on a single [H, W, 3] float32 frame in [0, 1].
+
+    Implements Winnemöller's eXtended DoG:
+        D(x)  = G_σ(x) - τ · G_(kσ)(x)            where τ = p/(1+p) ... we use
+                                                   the equivalent (1+p)·G_σ - p·G_(kσ)
+        T(D) = 1                       if D >= ε
+               1 + tanh(φ · (D - ε))   otherwise
+    """
+    # 1) Grayscale (BT.601 weights) — XDoG is defined on luminance.
+    r, g, b = rgb_hwc[..., 0], rgb_hwc[..., 1], rgb_hwc[..., 2]
+    gray = 0.299 * r + 0.587 * g + 0.114 * b
+
+    # 2) Two Gaussian blurs.
+    g_small = _xdog_gaussian_blur(gray, sigma)
+    g_large = _xdog_gaussian_blur(gray, sigma * k)
+
+    # 3) eXtended difference of Gaussians.
+    dog = (1.0 + sharpness_p) * g_small - sharpness_p * g_large
+
+    # 4) Soft threshold: 1 above epsilon, 1 + tanh(...) below.
+    above = dog >= epsilon
+    soft = 1.0 + torch.tanh(phi * (dog - epsilon))
+    out = torch.where(above, torch.ones_like(dog), soft)
+    out = out.clamp(0.0, 1.0)
+
+    # 5) Optional gamma adjustment.
+    if gamma and abs(gamma - 1.0) > 1e-6:
+        # avoid 0^x edge cases
+        out = out.clamp(min=1e-6) ** (1.0 / float(gamma))
+        out = out.clamp(0.0, 1.0)
+
+    # 6) Optional hard binarization for crisp scribble.
+    if binarize:
+        out = (out >= float(binarize_threshold)).to(out.dtype)
+
+    # 7) Optional invert (XDoG's natural orientation is black lines on white;
+    # most ControlNet scribble preprocessors expect white lines on black).
+    if invert:
+        out = 1.0 - out
+
+    return out  # [H, W] float32 in [0, 1]
+
+
+class Soze_ScribbleXDoG:
+    """Convert an image (or batch) into a black-and-white scribble / sketch
+    using the eXtended Difference-of-Gaussians (XDoG) algorithm.
+
+    Good defaults for general line-art: sigma=0.5, k=1.6, sharpness=10,
+    epsilon=0.0, phi=10. Tweak `sharpness` and `phi` for edge contrast,
+    `sigma` for line scale, and toggle `binarize` for crisp B&W output
+    suited to ControlNet scribble preprocessors.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "sigma": ("FLOAT", {"default": 0.5, "min": 0.1, "max": 10.0, "step": 0.05, "tooltip": "Base Gaussian sigma. Higher = thicker/coarser lines."}),
+                "k": ("FLOAT", {"default": 1.6, "min": 1.05, "max": 5.0, "step": 0.05, "tooltip": "Sigma ratio between the two Gaussians. 1.6 is the classic DoG sweet spot."}),
+                "sharpness": ("FLOAT", {"default": 10.0, "min": 0.0, "max": 200.0, "step": 0.5, "tooltip": "XDoG 'p' parameter — emphasizes edges. Higher = bolder lines."}),
+                "epsilon": ("FLOAT", {"default": 0.0, "min": -1.0, "max": 1.0, "step": 0.01, "tooltip": "Threshold below which the soft-step kicks in. Negative widens lines."}),
+                "phi": ("FLOAT", {"default": 10.0, "min": 0.1, "max": 500.0, "step": 0.5, "tooltip": "Soft-threshold steepness. Higher = harder edges (more binary feel)."}),
+                "gamma": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05, "tooltip": "Output gamma. <1 darkens, >1 brightens."}),
+                "invert": ("BOOLEAN", {"default": False, "tooltip": "On: white lines on black background (ControlNet scribble convention). Off: black lines on white."}),
+                "binarize": ("BOOLEAN", {"default": False, "tooltip": "Hard threshold for crisp B&W. Use with binarize_threshold."}),
+                "binarize_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Only used when binarize=True."}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
+    RETURN_NAMES = ("image", "mask", "status")
+    FUNCTION = "process"
+    CATEGORY = "image/preprocessors"
+
+    def process(self, image, sigma, k, sharpness, epsilon, phi, gamma,
+                invert, binarize, binarize_threshold, unique_id=None):
+        if image is None or image.shape[0] == 0:
+            status = "Skipped: image is None or empty."
+            push_node_status(unique_id, status)
+            blank = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+            blank_mask = torch.zeros((1, 64, 64), dtype=torch.float32)
+            return (blank, blank_mask, status)
+
+        # Run on CPU — XDoG kernels are tiny and CPU is plenty fast for typical
+        # preview/preprocessor sizes; avoids hitting GPU when the user just
+        # wants a quick scribble pass.
+        src = image.detach().cpu().to(torch.float32)
+        if src.shape[-1] == 4:
+            # Drop alpha — XDoG operates on RGB luminance.
+            src = src[..., :3]
+
+        out_frames = []
+        for i in range(src.shape[0]):
+            scribble_2d = _xdog_one_frame(
+                src[i], sigma, k, sharpness, epsilon, phi, gamma,
+                invert, binarize, binarize_threshold,
+            )
+            # Re-replicate the single channel to RGB so it's a normal IMAGE tensor.
+            out_frames.append(scribble_2d.unsqueeze(-1).expand(-1, -1, 3))
+
+        image_out = torch.stack(out_frames, dim=0)  # [B, H, W, 3]
+        # MASK is [B, H, W] single-channel (use the same scribble — caller can
+        # invert downstream if they need the opposite polarity).
+        mask_out = image_out[..., 0].clone()
+
+        mode_bits = []
+        if binarize:
+            mode_bits.append(f"binarized@{binarize_threshold}")
+        if invert:
+            mode_bits.append("inverted")
+        mode_tag = " | ".join(mode_bits) or "soft"
+        status = (
+            f"OK: {src.shape[0]} frame(s) {src.shape[2]}x{src.shape[1]}; "
+            f"sigma={sigma}, k={k}, sharpness={sharpness}, epsilon={epsilon}, phi={phi}, gamma={gamma}; {mode_tag}"
+        )
+        push_node_status(unique_id, status)
+        return (image_out, mask_out, status)
+
+
+# ---------------------------------------------------------------------------
+# Lineart — Sobel-gradient lineart with morphology + thresholding controls
+# ---------------------------------------------------------------------------
+
+
+def _sobel_magnitude(gray_2d):
+    """3x3 Sobel gradient magnitude of a [H, W] float32 tensor.
+
+    Pure-torch implementation (no opencv) so this works in any ComfyUI env.
+    """
+    import torch.nn.functional as F
+    device = gray_2d.device
+    dtype = gray_2d.dtype
+    kx = torch.tensor([[-1.0, 0.0, 1.0],
+                       [-2.0, 0.0, 2.0],
+                       [-1.0, 0.0, 1.0]], device=device, dtype=dtype).view(1, 1, 3, 3)
+    ky = torch.tensor([[-1.0, -2.0, -1.0],
+                       [ 0.0,  0.0,  0.0],
+                       [ 1.0,  2.0,  1.0]], device=device, dtype=dtype).view(1, 1, 3, 3)
+    g = gray_2d.unsqueeze(0).unsqueeze(0)        # [1, 1, H, W]
+    gx = F.conv2d(g, kx, padding=1)
+    gy = F.conv2d(g, ky, padding=1)
+    mag = torch.sqrt(gx * gx + gy * gy)
+    return mag.squeeze(0).squeeze(0)
+
+
+def _morph_dilate(gray_2d, iterations):
+    """Morphological dilation via repeated 3x3 max-pooling. iterations=0 is a no-op."""
+    import torch.nn.functional as F
+    if iterations <= 0:
+        return gray_2d
+    x = gray_2d.unsqueeze(0).unsqueeze(0)        # [1, 1, H, W]
+    for _ in range(int(iterations)):
+        x = F.max_pool2d(x, kernel_size=3, stride=1, padding=1)
+    return x.squeeze(0).squeeze(0)
+
+
+def _morph_erode(gray_2d, iterations):
+    """Morphological erosion = invert -> dilate -> invert. iterations=0 is a no-op."""
+    if iterations <= 0:
+        return gray_2d
+    return 1.0 - _morph_dilate(1.0 - gray_2d, iterations)
+
+
+def _normalize_lines(mag, mode):
+    """Rescale the gradient magnitude to roughly [0, 1] using the chosen mode."""
+    if mode == "max":
+        denom = float(mag.max())
+        if denom > 1e-6:
+            return (mag / denom).clamp(0.0, 1.0)
+        return mag
+    if mode == "percentile_95":
+        # Robust to bright outliers — anchor 95th percentile to 1.0.
+        flat = mag.flatten()
+        denom = float(torch.quantile(flat, 0.95))
+        if denom > 1e-6:
+            return (mag / denom).clamp(0.0, 1.0)
+        return mag
+    # "none" — pass through (caller will clamp later if needed).
+    return mag
+
+
+def _lineart_one_frame(rgb_hwc, pre_blur_sigma, line_strength, normalize_mode,
+                       gamma, thickness, thinning, soft_threshold,
+                       binarize, binarize_threshold, invert):
+    """Run the Lineart pipeline on a single [H, W, 3] float32 frame in [0, 1]."""
+    r, g, b = rgb_hwc[..., 0], rgb_hwc[..., 1], rgb_hwc[..., 2]
+    gray = 0.299 * r + 0.587 * g + 0.114 * b
+
+    if pre_blur_sigma > 0:
+        gray = _xdog_gaussian_blur(gray, pre_blur_sigma)
+
+    mag = _sobel_magnitude(gray)
+    if line_strength != 1.0:
+        mag = mag * float(line_strength)
+
+    mag = _normalize_lines(mag, normalize_mode)
+    mag = mag.clamp(0.0, 1.0)
+
+    # Optional soft floor — values below this drop to zero, above are kept.
+    # Acts like a continuous noise gate without going fully binary.
+    if soft_threshold > 0:
+        mag = torch.where(mag >= float(soft_threshold), mag, torch.zeros_like(mag))
+
+    if gamma and abs(gamma - 1.0) > 1e-6:
+        mag = mag.clamp(min=1e-6) ** (1.0 / float(gamma))
+        mag = mag.clamp(0.0, 1.0)
+
+    # Morphology: thin first (one iteration), then thicken if requested. Thinning
+    # before thickening keeps a base line then optionally fattens it.
+    if thinning:
+        mag = _morph_erode(mag, 1)
+    if thickness and thickness > 0:
+        mag = _morph_dilate(mag, int(thickness))
+
+    if binarize:
+        mag = (mag >= float(binarize_threshold)).to(mag.dtype)
+
+    # Default output is white-lines-on-black (natural Sobel output, which is
+    # also the ControlNet lineart preprocessor convention). `invert` flips to
+    # black-on-white for a preview-friendly sketch look.
+    if invert:
+        mag = 1.0 - mag
+
+    return mag.clamp(0.0, 1.0)
+
+
+class Soze_Lineart:
+    """Convert an image (or batch) into a clean line drawing using Sobel
+    gradients + morphology + optional binarization. Complement to the Scribble
+    XDoG node — same look-and-feel, different algorithm (gradient vs. DoG).
+
+    Defaults give thin white lines on a black background (ControlNet lineart
+    preprocessor convention). Toggle `invert` for black lines on white.
+    """
+
+    NORMALIZE_MODES = ["percentile_95", "max", "none"]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "pre_blur_sigma": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 10.0, "step": 0.05, "tooltip": "Gaussian denoise before Sobel. 0 = none. Higher hides texture noise."}),
+                "line_strength": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1, "tooltip": "Multiplier on the gradient magnitude before normalize / threshold."}),
+                "normalize": (cls.NORMALIZE_MODES, {"default": "percentile_95", "tooltip": "How to map raw gradient magnitude to [0,1]. percentile_95 is robust to outliers."}),
+                "gamma": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05, "tooltip": "Output gamma. <1 darkens lines, >1 brightens / spreads them."}),
+                "soft_threshold": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Continuous noise gate — anything below this drops to 0. 0 = off."}),
+                "thickness": ("INT", {"default": 0, "min": 0, "max": 10, "step": 1, "tooltip": "Morphological dilation iterations. 0 = thin / native; each step adds ~1 pixel of line width."}),
+                "thinning": ("BOOLEAN", {"default": False, "tooltip": "Apply one erosion pass before any thickening (skeleton-ish)."}),
+                "binarize": ("BOOLEAN", {"default": False, "tooltip": "Hard black/white using binarize_threshold."}),
+                "binarize_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Only used when binarize=True."}),
+                "invert": ("BOOLEAN", {"default": False, "tooltip": "Off: white lines on black (ControlNet convention). On: black lines on white (sketch preview)."}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
+    RETURN_NAMES = ("image", "mask", "status")
+    FUNCTION = "process"
+    CATEGORY = "image/preprocessors"
+
+    def process(self, image, pre_blur_sigma, line_strength, normalize, gamma,
+                soft_threshold, thickness, thinning, binarize, binarize_threshold,
+                invert, unique_id=None):
+        if image is None or image.shape[0] == 0:
+            status = "Skipped: image is None or empty."
+            push_node_status(unique_id, status)
+            blank = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+            blank_mask = torch.zeros((1, 64, 64), dtype=torch.float32)
+            return (blank, blank_mask, status)
+
+        src = image.detach().cpu().to(torch.float32)
+        if src.shape[-1] == 4:
+            src = src[..., :3]
+
+        out_frames = []
+        for i in range(src.shape[0]):
+            lines_2d = _lineart_one_frame(
+                src[i], pre_blur_sigma, line_strength, normalize, gamma,
+                thickness, thinning, soft_threshold,
+                binarize, binarize_threshold, invert,
+            )
+            out_frames.append(lines_2d.unsqueeze(-1).expand(-1, -1, 3))
+
+        image_out = torch.stack(out_frames, dim=0)             # [B, H, W, 3]
+        mask_out = image_out[..., 0].clone()                   # [B, H, W]
+
+        bits = [f"blur={pre_blur_sigma}", f"strength={line_strength}", f"norm={normalize}", f"gamma={gamma}"]
+        if soft_threshold > 0:
+            bits.append(f"soft@{soft_threshold}")
+        if thinning:
+            bits.append("thinned")
+        if thickness:
+            bits.append(f"thick+{thickness}")
+        if binarize:
+            bits.append(f"binarized@{binarize_threshold}")
+        if invert:
+            bits.append("inverted(black-on-white)")
+        else:
+            bits.append("white-on-black")
+        status = (
+            f"OK: {src.shape[0]} frame(s) {src.shape[2]}x{src.shape[1]} | "
+            + ", ".join(bits)
+        )
+        push_node_status(unique_id, status)
+        return (image_out, mask_out, status)
+
+
+# ---------------------------------------------------------------------------
+# Save Image Batch with per-image filenames
+# ---------------------------------------------------------------------------
+
+
+def _parse_filename_array(s):
+    """Parse a filename list from a flexible input.
+
+    Accepts:
+      * a Python `list` / `tuple` (e.g. when upstream emits one directly)
+      * a JSON-encoded array string         `["a.png", "b.png"]`
+      * a Python-style repr string          `['a.png', 'b.png']`  (single quotes)
+      * newline-separated values            `a.png\nb.png`
+      * a single bare filename              `a.png`
+    Empty / None / whitespace entries are dropped. Recursive — if the input
+    is a list containing nested lists or strings, each is parsed in turn.
+    """
+    if s is None:
+        return []
+
+    # Already a Python sequence (the bug we just hit — upstream handed us a list).
+    if isinstance(s, (list, tuple)):
+        out = []
+        for item in s:
+            out.extend(_parse_filename_array(item))
+        return out
+
+    s = str(s).strip()
+    if not s:
+        return []
+
+    if s.startswith("["):
+        # Try strict JSON first
+        try:
+            arr = json.loads(s)
+            if isinstance(arr, list):
+                return [str(x).strip() for x in arr if str(x).strip()]
+        except json.JSONDecodeError:
+            # Fall back to Python literal (handles single-quoted repr strings)
+            try:
+                arr = ast.literal_eval(s)
+                if isinstance(arr, (list, tuple)):
+                    return [str(x).strip() for x in arr if str(x).strip()]
+            except Exception:
+                pass
+
+    if "\n" in s:
+        return [line.strip() for line in s.split("\n") if line.strip()]
+
+    return [s]
+
+
+def _next_suffix_path(path):
+    """Return the path with the next free _NNNNN counter inserted before the
+    extension. Matches ComfyUI's standard save-image suffix convention."""
+    base, ext = os.path.splitext(path)
+    counter = 1
+    while True:
+        candidate = f"{base}_{counter:05d}{ext}"
+        if not os.path.exists(candidate):
+            return candidate
+        counter += 1
+
+
+def _iter_image_frames(images):
+    """Yield each frame as a [H, W, C] uint-tensor view, regardless of the
+    input shape ComfyUI hands us.
+
+    Accepts:
+      * a single tensor `[B, H, W, C]` (the usual case) -> yields B frames
+      * a single tensor `[H, W, C]`                     -> yields 1 frame
+      * a Python list of any of the above              -> flattens across
+        items (handles upstream nodes with OUTPUT_IS_LIST = (True,)).
+    Empty inputs yield nothing.
+    """
+    if images is None:
+        return
+    if isinstance(images, list):
+        for item in images:
+            yield from _iter_image_frames(item)
+        return
+    # Assume a torch.Tensor at this point.
+    if images.dim() == 4:                # [B, H, W, C]
+        for b in range(images.shape[0]):
+            yield images[b]
+    elif images.dim() == 3:              # [H, W, C]
+        yield images
+    elif images.dim() == 0:
+        return
+    else:
+        # Unknown shape — best-effort: treat as a single frame.
+        yield images
+
+
+class Soze_SaveImageBatchWithFilenames:
+    """Save an IMAGE batch using a paired array of filenames.
+
+    Each image in the batch is paired by index with the matching entry in the
+    filename array. Both JSON arrays (`["a.png","b.png"]`) and newline-separated
+    strings are accepted. Filenames without an extension get the chosen
+    `default_format` appended automatically (e.g. `.png`).
+
+    Filenames are placed under `output_path`. Subdirectories inside a filename
+    are honored — e.g. `subdir/foo.png` creates `subdir/` inside the output.
+
+    `overwrite`:
+      * On  -> existing files at the target path are overwritten in-place.
+      * Off -> on collision, append the standard ComfyUI `_00001` counter
+               (and `_00002`, etc.) until the path is free.
+
+    Filename array shorter than the image batch: extras are saved with
+    auto-generated names like `image_<N>.png`. Filename array longer than
+    the batch: the trailing names are ignored (logged in status).
+    """
+
+    DEFAULT_FORMAT_CHOICES = ["png", "jpeg", "webp"]
+
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
+        self.compress_level = 4
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip": "Batch of images to save."}),
+                "filenames": ("STRING", {"default": "", "multiline": True, "tooltip": "JSON array or newline-separated filenames, one per image. Subdirectories inside a filename are honored."}),
+                "output_path": ("STRING", {"default": "", "multiline": False, "tooltip": "Directory to save into. Relative to ComfyUI output dir, or absolute. Empty = output dir root."}),
+                "overwrite": ("BOOLEAN", {"default": False, "tooltip": "On: overwrite existing files. Off: append the standard ComfyUI _NNNNN counter on collision."}),
+                "default_format": (cls.DEFAULT_FORMAT_CHOICES, {"default": "png", "tooltip": "Format used when a filename has no extension."}),
+            },
+            "optional": {
+                "jpeg_quality": ("INT", {"default": 95, "min": 1, "max": 100, "step": 1, "tooltip": "Only used for jpeg / webp."}),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "INT", "STRING")
+    RETURN_NAMES = ("saved_paths", "count", "status")
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    CATEGORY = "image"
+    DESCRIPTION = "Save an IMAGE batch using a paired array of filenames into a target directory."
+
+    def save(self, images, filenames, output_path, overwrite, default_format,
+             jpeg_quality=95, prompt=None, extra_pnginfo=None, unique_id=None):
+        # Flatten whatever ComfyUI handed us (single tensor, single frame, or
+        # a Python list of either) into one ordered sequence of per-frame
+        # tensors. Upstream nodes with OUTPUT_IS_LIST=(True,) deliver a list,
+        # which is why the old `images.shape[0]` check blew up.
+        frames = list(_iter_image_frames(images))
+        if not frames:
+            status = "Skipped: empty IMAGE batch."
+            push_node_status(unique_id, status)
+            return {"ui": {"images": [], "text": [status]}, "result": ("", 0, status)}
+
+        names = _parse_filename_array(filenames)
+        batch_count = len(frames)
+
+        # Resolve target directory: empty -> output dir root; relative -> under
+        # output dir; absolute -> used as-is.
+        if output_path and output_path.strip():
+            cleaned = output_path.strip()
+            if os.path.isabs(cleaned):
+                out_dir = os.path.normpath(cleaned)
+            else:
+                out_dir = os.path.normpath(os.path.join(self.output_dir, cleaned))
+        else:
+            out_dir = self.output_dir
+        os.makedirs(out_dir, exist_ok=True)
+
+        default_ext = "jpg" if default_format == "jpeg" else default_format
+
+        saved_paths = []
+        ui_results = []
+        autogen_count = 0
+        overwritten_count = 0
+        suffixed_count = 0
+
+        for i in range(batch_count):
+            # Pair by index, fall back to auto-generated name when names runs short.
+            if i < len(names) and names[i]:
+                fname = names[i]
+            else:
+                fname = f"image_{i}.{default_ext}"
+                autogen_count += 1
+
+            # Strip leading separators so the join below stays inside out_dir.
+            fname = fname.lstrip("/").lstrip("\\")
+
+            base_no_ext, ext = os.path.splitext(fname)
+            if not ext:
+                ext = "." + default_ext
+                fname = base_no_ext + ext
+
+            # Determine PIL save format from the resolved extension.
+            ext_lower = ext.lower().lstrip(".")
+            if ext_lower in ("jpg", "jpeg"):
+                save_format = "JPEG"
+            elif ext_lower == "webp":
+                save_format = "WEBP"
+            else:
+                save_format = "PNG"
+
+            target = os.path.normpath(os.path.join(out_dir, fname))
+
+            # Make sure any subdirectory inside the filename exists.
+            parent = os.path.dirname(target)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+
+            if os.path.exists(target):
+                if overwrite:
+                    overwritten_count += 1
+                else:
+                    target = _next_suffix_path(target)
+                    suffixed_count += 1
+
+            # Convert [H, W, C] tensor (float32 in [0,1]) -> PIL.
+            arr = frames[i].cpu().numpy()
+            arr = np.clip(arr * 255.0, 0, 255).astype(np.uint8)
+            pil = Image.fromarray(arr)
+
+            save_kwargs = {}
+            if save_format == "JPEG":
+                if pil.mode == "RGBA":
+                    pil = pil.convert("RGB")
+                save_kwargs["quality"] = int(jpeg_quality)
+            elif save_format == "WEBP":
+                save_kwargs["quality"] = int(jpeg_quality)
+            else:
+                # PNG: embed metadata like the standard SaveImage node.
+                if not args.disable_metadata:
+                    metadata = PngInfo()
+                    if prompt is not None:
+                        metadata.add_text("prompt", json.dumps(prompt))
+                    if extra_pnginfo is not None:
+                        for x in extra_pnginfo:
+                            metadata.add_text(x, json.dumps(extra_pnginfo[x]))
+                    save_kwargs["pnginfo"] = metadata
+                save_kwargs["compress_level"] = self.compress_level
+
+            pil.save(target, save_format, **save_kwargs)
+            saved_paths.append(target)
+
+            # UI thumbnail entry — only for files under the output dir.
+            try:
+                rel_path = os.path.relpath(target, self.output_dir)
+                if not rel_path.startswith(".."):
+                    ui_results.append({
+                        "filename": os.path.basename(target),
+                        "subfolder": os.path.dirname(rel_path),
+                        "type": self.type,
+                    })
+            except ValueError:
+                # Different drive on Windows — skip UI preview but still save.
+                pass
+
+        notes = []
+        if autogen_count:
+            notes.append(f"{autogen_count} auto-named (filename array shorter than batch)")
+        if len(names) > batch_count:
+            notes.append(f"{len(names) - batch_count} extra filename(s) ignored")
+        if overwritten_count:
+            notes.append(f"{overwritten_count} overwritten")
+        if suffixed_count:
+            notes.append(f"{suffixed_count} suffixed with _NNNNN to avoid collision")
+
+        status = f"OK: saved {len(saved_paths)} image(s) to {out_dir}"
+        if notes:
+            status += " | " + ", ".join(notes)
+        push_node_status(unique_id, status)
+
+        return {
+            "ui": {"images": ui_results, "text": [status]},
+            "result": ("\n".join(saved_paths), len(saved_paths), status),
+        }
+
+
+class Soze_LoadImagesFromUrlList:
+    """Load up to 9 images from a multiline string of URLs (one per row)."""
+
+    MAX_IMAGES = 9
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "urls": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "tooltip": f"One URL per row. Up to {cls.MAX_IMAGES} rows are used; empty/missing rows output None.",
+                }),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("IMAGE",) * MAX_IMAGES + ("INT", "STRING")
+    RETURN_NAMES = tuple(f"image{i+1}" for i in range(MAX_IMAGES)) + ("loaded_count", "status")
+    FUNCTION = "load"
+    CATEGORY = "image"
+
+    def _load_one(self, url):
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        image = Image.open(response.raw)
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+        return pil2tensor(image)
+
+    def load(self, urls, unique_id=None):
+        log = EventLog()
+        rows = (urls or "").splitlines()
+
+        outputs = [None] * self.MAX_IMAGES
+        loaded = 0
+        errors = 0
+
+        for i in range(self.MAX_IMAGES):
+            if i >= len(rows):
+                break
+            url = rows[i].strip()
+            if not url:
+                continue
+            try:
+                outputs[i] = self._load_one(url)
+                loaded += 1
+                push_node_status(unique_id, f"OK row {i+1}: {url}", log)
+            except Exception as e:
+                errors += 1
+                push_node_status(unique_id, f"ERROR row {i+1} ({url}): {e!r}", log)
+
+        headline = f"OK: loaded {loaded}/{self.MAX_IMAGES} image(s)"
+        if errors:
+            headline += f", {errors} error(s)"
+        push_node_status(unique_id, headline, log)
+
+        return tuple(outputs) + (loaded, finalize_status(headline, log))
+
+
+class Soze_ImageCrop:
+    """Crop pixels off the edges of an image or image batch.
+
+    Accepts a single IMAGE or an IMAGE batch ([B,H,W,C]) and removes `top`,
+    `bottom`, `left`, and `right` pixels from each frame. The same crop is
+    applied to every frame, so the batch stays aligned. Crop amounts are
+    clamped so at least a 1x1 image remains.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        edge = {"default": 0, "min": 0, "max": 8192, "step": 1}
+        return {
+            "required": {
+                "image": ("IMAGE", {"tooltip": "Image or image batch to crop."}),
+                "top": ("INT", {**edge, "tooltip": "Pixels to remove from the top edge."}),
+                "bottom": ("INT", {**edge, "tooltip": "Pixels to remove from the bottom edge."}),
+                "left": ("INT", {**edge, "tooltip": "Pixels to remove from the left edge."}),
+                "right": ("INT", {**edge, "tooltip": "Pixels to remove from the right edge."}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT", "STRING")
+    RETURN_NAMES = ("image", "width", "height", "status")
+    FUNCTION = "crop"
+    CATEGORY = "image"
+
+    def crop(self, image, top, bottom, left, right, unique_id=None):
+        if image is None:
+            status = "Skipped: image is None."
+            push_node_status(unique_id, status)
+            return (None, 0, 0, status)
+
+        # Normalize to [B,H,W,C].
+        if image.dim() == 3:
+            image = image.unsqueeze(0)
+
+        b, h, w, c = image.shape[0], image.shape[1], image.shape[2], image.shape[3]
+
+        # Clamp negatives to 0.
+        top = max(0, int(top))
+        bottom = max(0, int(bottom))
+        left = max(0, int(left))
+        right = max(0, int(right))
+
+        # Clamp so opposing crops never remove the whole axis (leave >= 1px).
+        clamped = False
+        if top + bottom >= h:
+            top = min(top, h - 1)
+            bottom = min(bottom, h - 1 - top)
+            clamped = True
+        if left + right >= w:
+            left = min(left, w - 1)
+            right = min(right, w - 1 - left)
+            clamped = True
+
+        y0, y1 = top, h - bottom
+        x0, x1 = left, w - right
+
+        cropped = image[:, y0:y1, x0:x1, :]
+        new_h, new_w = cropped.shape[1], cropped.shape[2]
+
+        status = (
+            f"OK: {w}x{h} -> {new_w}x{new_h} "
+            f"(T{top} B{bottom} L{left} R{right}, batch={b})"
+        )
+        if clamped:
+            status += " [crop clamped to keep >=1px]"
+        push_node_status(unique_id, status)
+        return (cropped, new_w, new_h, status)
+
 
 

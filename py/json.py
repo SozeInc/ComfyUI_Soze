@@ -1,6 +1,7 @@
 import json
 import folder_paths
 import os
+import re
 from pathlib import Path
 import random
 import ast
@@ -23,6 +24,62 @@ import html
 
 JSON_OUT_PATH = os.path.join(folder_paths.output_directory, "json")
 Path(JSON_OUT_PATH).mkdir(parents=True, exist_ok=True)
+
+
+def _parse_json_loose(text):
+    """Parse JSON, tolerating a few common real-world malformations:
+
+      - ```json ... ``` markdown fences
+      - bare comma-separated top-level objects (a Postgres/SQL row dump):
+            {..},{..}            ->  [{..},{..}]
+      - JSON Lines (one object per line, no separating commas):
+            {..}\\n{..}           ->  [{..},{..}]
+      - Python-style dicts (single quotes / None / True) via ast.literal_eval
+
+    Returns the parsed object. Raises json.JSONDecodeError if nothing works
+    (so existing `except json.JSONDecodeError` handlers keep working — it is a
+    subclass of ValueError).
+    """
+    if text is None:
+        raise json.JSONDecodeError("Empty input", "", 0)
+
+    s = text.strip()
+
+    # Strip a leading/trailing markdown code fence.
+    if s.startswith("```"):
+        s = re.sub(r"^```[a-zA-Z0-9]*", "", s).strip()
+        if s.endswith("```"):
+            s = s[:-3].strip()
+
+    if s == "":
+        raise json.JSONDecodeError("Empty input", "", 0)
+
+    # 1) Straight parse.
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+
+    # 2) Wrap bare comma-separated top-level values in an array:  {..},{..}
+    if not s.startswith("["):
+        try:
+            return json.loads("[" + s + "]")
+        except json.JSONDecodeError:
+            pass
+
+    # 3) JSON Lines — join non-empty lines with commas, then wrap.
+    lines = [ln.strip().rstrip(",") for ln in s.splitlines() if ln.strip()]
+    if len(lines) > 1:
+        try:
+            return json.loads("[" + ",".join(lines) + "]")
+        except json.JSONDecodeError:
+            pass
+
+    # 4) Python literal fallback (single quotes / None / True / tuples).
+    try:
+        return ast.literal_eval(s)
+    except Exception:
+        raise json.JSONDecodeError("Invalid JSON or Python literal", s, 0)
 
 @PromptServer.instance.routes.get("/toolbox/json/{filename}")
 async def toolbox_json(request):
@@ -62,18 +119,9 @@ class Soze_FormatJson:
     CATEGORY = "utils"
     def format_json(self, json_string: str) -> str:
         try:
-            # Try to parse the JSON as-is first
-            try:
-                if (json_string.strip().startswith("```json")):
-                    json_string = json_string.replace("```json", "").replace("```", "").strip()
-                data = json.loads(json_string)
-            except json.JSONDecodeError:
-                # Fallback to ast.literal_eval for Python-style dicts
-                try:
-                    data = ast.literal_eval(json_string)
-                except Exception:
-                    raise json.JSONDecodeError("Invalid JSON or Python literal", json_string, 0)
-            
+            # Parse, tolerating fences / row-dumps / JSONL / Python literals.
+            data = _parse_json_loose(json_string)
+
             formatted_json = json.dumps(data, indent=2)
             minified_json = json.dumps(data, separators=(',', ':'))
             return (formatted_json, minified_json,)
@@ -144,9 +192,7 @@ class Soze_ParseValueFromJSONString(Soze_FormatJson):
                     input_preview = json_string
 
             try:
-                if (json_string.strip().startswith("```json")):
-                    json_string = json_string.replace("```json", "").replace("```", "").strip()
-                data = json.loads(json_string)
+                data = _parse_json_loose(json_string)
             except json.JSONDecodeError:
                 if use_default_on_error:
                     return get_default_tuple()
@@ -159,8 +205,30 @@ class Soze_ParseValueFromJSONString(Soze_FormatJson):
             if isinstance(value, list) and len(value) > 0:
                 value = value[0]
 
-            for k in key.split('.'):
+            # Normalize bracket notation into dotted segments so callers can
+            # use any of: foo.0.bar  /  foo[0].bar  /  foo["bar"].baz
+            normalized_key = key or ""
+            # ["key"] or ['key'] -> .key
+            normalized_key = re.sub(r"""\[\s*["']([^"']+)["']\s*\]""", r".\1", normalized_key)
+            # [123] -> .123
+            normalized_key = re.sub(r"\[\s*(\d+)\s*\]", r".\1", normalized_key)
+            # Strip leading dot if the key began with a bracket (e.g. [0].foo)
+            normalized_key = normalized_key.lstrip(".")
+
+            for k in normalized_key.split('.'):
                 k = k.strip()
+                if k == "":
+                    continue
+                # If the current value is a string that looks like embedded
+                # JSON (common when APIs/Postgres store JSON in a text column),
+                # try to parse it so the next segment can descend into it.
+                if isinstance(value, str):
+                    stripped = value.strip()
+                    if stripped.startswith(("[", "{")):
+                        try:
+                            value = json.loads(stripped)
+                        except json.JSONDecodeError:
+                            pass  # leave as string; lookup will fail naturally
                 if isinstance(value, dict) and k in value:
                     value = value[k]
                 elif isinstance(value, list) and k.isdigit():
@@ -256,17 +324,8 @@ class Soze_JSONGetArrayCount:
 
     def calculate_array_count(self, json_input: str, json_path: str, unique_id=None) -> Tuple[str, str]:
         try:
-            # Try JSON first (standard). If it fails, try ast.literal_eval
-            try:
-                if (json_input.strip().startswith("```json")):
-                    json_input = json_input.replace("```json", "").replace("```", "").strip()
-                data = json.loads(json_input)
-            except json.JSONDecodeError:
-                # Allow Python-style single-quoted lists/dicts by using ast.literal_eval
-                try:
-                    data = ast.literal_eval(json_input)
-                except Exception:
-                    raise json.JSONDecodeError("Invalid JSON or Python literal", json_input, 0)
+            # Parse, tolerating fences / row-dumps / JSONL / Python literals.
+            data = _parse_json_loose(json_input)
             # Navigate to the specified path if provided
             if json_path.strip() != "":
                 for key in json_path.split('.'):
@@ -323,17 +382,8 @@ class Soze_JSONArrayIteratorNode:
 
     def iterate_json_array(self, json_input: str, index: int, unique_id=None) -> Tuple[str, int, int]:
         try:
-            # Try JSON first (standard). If it fails, try ast.literal_eval
-            try:
-                if (json_input.strip().startswith("```json")):
-                    json_input = json_input.replace("```json", "").replace("```", "").strip()
-                data = json.loads(json_input)
-            except json.JSONDecodeError:
-                # Allow Python-style single-quoted lists/dicts by using ast.literal_eval
-                try:
-                    data = ast.literal_eval(json_input)
-                except Exception:
-                    raise json.JSONDecodeError("Invalid JSON or Python literal", json_input, 0)
+            # Parse, tolerating fences / row-dumps / JSONL / Python literals.
+            data = _parse_json_loose(json_input)
             if not isinstance(data, list):
                 push_node_status(unique_id, "ERROR: input is not a JSON array.")
                 raise ValueError("Input must be a JSON array")
@@ -435,6 +485,129 @@ class Soze_JSONPathExtractorNode:
         return float("NaN")
 
 
+def _navigate_json_key_path(data, path):
+    """Walk a dotted/bracketed path into JSON-like data.
+
+    Examples:
+      "Story"                  -> data["Story"]
+      "Story.Name"             -> data["Story"]["Name"]
+      "items[0].id"            -> data["items"][0]["id"]
+      "0.title"                -> data[0]["title"]   (bare digit at root)
+      'data["users"][2].name'  -> data["users"][2]["name"]
+
+    Tolerances (matching the JSON Value Parser node):
+      - bracket notation is normalized to dotted segments
+      - if the ROOT is a list and the first segment is a non-index key, the
+        list is auto-unwrapped to its first element — so keys resolve against
+        a single-/multi-row array dump (row 0)
+      - a string value that itself contains embedded JSON (e.g. a stringified
+        column like reference_image_urls) is decoded before descending
+    """
+    # Normalize bracket notation -> dotted segments.
+    p = path or ""
+    p = re.sub(r"""\[\s*["']([^"']+)["']\s*\]""", r".\1", p)  # ["k"] / ['k'] -> .k
+    p = re.sub(r"\[\s*(\d+)\s*\]", r".\1", p)                   # [0] -> .0
+    segments = [seg.strip() for seg in p.lstrip(".").split('.') if seg.strip() != ""]
+
+    value = data
+
+    # Auto-unwrap a top-level list when the first segment is a non-index key.
+    if segments and isinstance(value, list) and not segments[0].isdigit():
+        if not value:
+            raise KeyError("empty array at root")
+        value = value[0]
+
+    for segment in segments:
+        # Decode embedded JSON strings on the way down.
+        if isinstance(value, str):
+            st = value.strip()
+            if st[:1] in ("[", "{"):
+                try:
+                    value = json.loads(st)
+                except json.JSONDecodeError:
+                    pass
+        if segment.isdigit() and isinstance(value, list):
+            value = value[int(segment)]
+        else:
+            value = value[segment]
+    return value
+
+
+class Soze_JSONStringParser10X:
+    """Read up to 10 string values out of a JSON document by key/path.
+
+    Sibling of `JSON Path Extractor` but with the simpler conventions you asked
+    for: 10 named key widgets, 10 named string outputs, no word limits, no
+    per-slot defaults, no "error on default" — a missing or invalid key just
+    yields an empty string for that slot and the node keeps going.
+
+    Each `key_N` widget accepts either:
+      * a bare top-level name      e.g. `Story`
+      * a dotted path              e.g. `Story.Name`
+      * indexed access             e.g. `items[0].id`  or  `0.title`
+
+    Object / array values are JSON-stringified into the output slot;
+    primitives are stringified as-is; `null` becomes an empty string.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        required = {
+            "json_string": ("STRING", {"multiline": True}),
+        }
+        for i in range(1, 11):
+            required[f"key_{i}"] = ("STRING", {"default": ""})
+        return {
+            "required": required,
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("STRING",) * 10
+    RETURN_NAMES = tuple(f"value_{i}" for i in range(1, 11))
+    FUNCTION = "parse"
+    CATEGORY = "utils"
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("NaN")
+
+    def parse(self, json_string, unique_id=None, **keys):
+        s = (json_string or "").strip()
+        if not s:
+            push_node_status(unique_id, "ERROR: empty input; all outputs empty.")
+            return tuple([""] * 10)
+
+        try:
+            data = _parse_json_loose(s)
+        except Exception:
+            push_node_status(unique_id, "ERROR: invalid JSON; all outputs empty.")
+            return tuple([""] * 10)
+
+        results = []
+        hits = 0
+        for i in range(1, 11):
+            key = str(keys.get(f"key_{i}", "")).strip()
+            if not key or data is None:
+                results.append("")
+                continue
+            try:
+                value = _navigate_json_key_path(data, key)
+            except Exception:
+                results.append("")
+                continue
+            if value is None:
+                results.append("")
+            elif isinstance(value, (dict, list)):
+                results.append(json.dumps(value, indent=2))
+            else:
+                results.append(str(value))
+            if results[-1]:
+                hits += 1
+
+        push_node_status(unique_id, f"OK: extracted {hits}/10 key(s).")
+        return tuple(results)
+
+
 class Soze_JSONFileLoader:
     @classmethod
     def IS_CHANGED(self, *args, **kwargs):
@@ -457,16 +630,7 @@ class Soze_JSONFileLoader:
         try:
             with open(json_filepath, 'r', encoding='utf-8') as file:
                 content = file.read()
-                try:
-                    if (content.strip().startswith("```json")):
-                        content = content.replace("```json", "").replace("```", "").strip()
-                    data = json.loads(content)
-                except json.JSONDecodeError:
-                    # Fallback to ast.literal_eval for Python-style dicts
-                    try:
-                        data = ast.literal_eval(content)
-                    except Exception:
-                        raise json.JSONDecodeError("Invalid JSON or Python literal", content, 0)            
+                data = _parse_json_loose(content)
                 formatted_json = json.dumps(data, indent=2)
                 minified_json = json.dumps(data, separators=(',', ':'))
             return (content, formatted_json, minified_json, json_filepath, os.path.basename(json_filepath), os.path.splitext(os.path.basename(json_filepath))[0])
@@ -518,16 +682,7 @@ class Soze_LoadJSONFileFromFolder():
                 raise ValueError(f"Path at index {index} is a directory, not a JSON file.") 
             with open(json_filepath, 'r', encoding='utf-8') as file:
                 content = file.read()
-                try:
-                    if (content.strip().startswith("```json")):
-                        content = content.replace("```json", "").replace("```", "").strip()
-                    data = json.loads(content)
-                except json.JSONDecodeError:
-                    # Fallback to ast.literal_eval for Python-style dicts
-                    try:
-                        data = ast.literal_eval(content)
-                    except Exception:
-                        raise json.JSONDecodeError("Invalid JSON or Python literal", content, 0)            
+                data = _parse_json_loose(content)
                 formatted_json = json.dumps(data, indent=2)
                 minified_json = json.dumps(data, separators=(',', ':'))
             return content, formatted_json, minified_json, json_filepath, os.path.basename(json_filepath), os.path.splitext(os.path.basename(json_filepath))[0]

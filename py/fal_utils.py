@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import tempfile
+import time
 
 import numpy as np
 import requests
@@ -268,15 +269,57 @@ class ResultProcessor:
 class ApiHandler:
     """Utility functions for API interactions."""
 
+    # Substrings (matched case-insensitively against the error text) that mark a
+    # failure as transient and worth re-submitting. `file_download_error` is the
+    # big one: FAL occasionally routes a job to a worker that can't reach the
+    # storage host our uploaded file lives on — a fresh submission usually lands
+    # on a worker that can.
+    _RETRYABLE_HINTS = (
+        "file_download_error",
+        "failed to download",
+        "internal server error",
+        "timeout",
+        "timed out",
+        "temporarily unavailable",
+        "connection",
+        "502 bad gateway",
+        "503 service",
+        "504 gateway",
+    )
+    _RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+    # Seconds to wait before attempts 2, 3, ... (last value reused if exceeded).
+    _RETRY_DELAYS = (3, 8, 15)
+
     @staticmethod
-    def submit_and_get_result(endpoint, arguments):
-        try:
-            client = FalConfig().get_client()
-            handler = client.submit(endpoint, arguments=arguments)
-            return handler.get()
-        except Exception as e:
-            logger.error("Error submitting to %s: %s", endpoint, e)
-            raise
+    def _is_retryable(exc) -> bool:
+        status = getattr(exc, "status_code", None)
+        if status in ApiHandler._RETRYABLE_STATUS:
+            return True
+        msg = str(exc).lower()
+        return any(hint in msg for hint in ApiHandler._RETRYABLE_HINTS)
+
+    @staticmethod
+    def submit_and_get_result(endpoint, arguments, max_attempts: int = 3):
+        last_exc = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                client = FalConfig().get_client()
+                handler = client.submit(endpoint, arguments=arguments)
+                return handler.get()
+            except Exception as e:
+                last_exc = e
+                if attempt < max_attempts and ApiHandler._is_retryable(e):
+                    delay = ApiHandler._RETRY_DELAYS[min(attempt - 1, len(ApiHandler._RETRY_DELAYS) - 1)]
+                    logger.warning(
+                        "FAL submit to %s failed (attempt %d/%d), retrying in %ds: %s",
+                        endpoint, attempt, max_attempts, delay, e,
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error("Error submitting to %s: %s", endpoint, e)
+                raise
+        # Exhausted retries on a retryable error.
+        raise last_exc
 
     @staticmethod
     def handle_video_generation_error(model_name, error):

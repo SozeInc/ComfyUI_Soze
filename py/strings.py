@@ -786,5 +786,206 @@ class Soze_OutputFilename:
         return (sanitized_path, sanitized_dir, sanitized_file, status)
 
 
+# Wildcard "any" type — equal to anything in ComfyUI's type-comparison.
+class _AnyType(str):
+    def __ne__(self, __value: object) -> bool:
+        return False
 
+
+_ANY = _AnyType("*")
+
+
+def _is_skippable_concat_value(v):
+    """Return True for values we should silently drop from Any Concat output.
+
+    Skips:
+      - None
+      - torch.Tensor (covers IMAGE, MASK, LATENT internals)
+      - PIL.Image.Image
+      - numpy.ndarray
+      - bytes / bytearray (likely binary payloads, not text)
+    """
+    if v is None:
+        return True
+    try:
+        import torch
+        if isinstance(v, torch.Tensor):
+            return True
+    except ImportError:
+        pass
+    try:
+        from PIL import Image as _PILImage
+        if isinstance(v, _PILImage.Image):
+            return True
+    except ImportError:
+        pass
+    if isinstance(v, np.ndarray):
+        return True
+    if isinstance(v, (bytes, bytearray)):
+        return True
+    return False
+
+
+def _coerce_to_concat_string(v):
+    """Convert a primitive-ish value to a string. Returns None to signal skip."""
+    if _is_skippable_concat_value(v):
+        return None
+    if isinstance(v, str):
+        return v
+    if isinstance(v, bool):
+        # Avoid bool's int-subclass branch below; use explicit True/False text.
+        return "True" if v else "False"
+    if isinstance(v, (int, float)):
+        return str(v)
+    # Lists/tuples/dicts/etc — fall back to str() but ignore if str() yields
+    # something that looks like a tensor repr (rare; tensors caught above).
+    try:
+        return str(v)
+    except Exception:
+        return None
+
+
+class Soze_AnyConcat:
+    """Concatenate up to 10 any-typed inputs into a string.
+
+    - Numbers, booleans, and strings are converted to text.
+    - Tensors, PIL images, numpy arrays, bytes, and None are silently skipped.
+    - Inputs that fail conversion are skipped (and reported in status).
+    """
+
+    MAX_INPUTS = 10
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "separator": ("STRING", {
+                    "default": " ",
+                    "tooltip": "Inserted between included inputs. Use \\n for a newline, \\t for tab.",
+                }),
+            },
+            "optional": {
+                **{f"any{i+1}": (_ANY, {}) for i in range(cls.MAX_INPUTS)},
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("STRING", "INT", "STRING")
+    RETURN_NAMES = ("text", "included_count", "status")
+    FUNCTION = "concat"
+    CATEGORY = "soze"
+
+    def concat(self, separator=" ", unique_id=None, **kwargs):
+        # Decode common escape sequences in the separator widget.
+        sep = (separator or "").encode("utf-8").decode("unicode_escape")
+
+        included = []
+        skipped = 0
+        for i in range(self.MAX_INPUTS):
+            key = f"any{i+1}"
+            if key not in kwargs:
+                continue
+            v = kwargs[key]
+            s = _coerce_to_concat_string(v)
+            if s is None:
+                if v is not None:
+                    skipped += 1
+                continue
+            included.append(s)
+
+        result = sep.join(included)
+        status = f"OK: concatenated {len(included)} input(s)"
+        if skipped:
+            status += f", skipped {skipped} non-text input(s)"
+        push_node_status(unique_id, status)
+        return (result, len(included), status)
+
+
+class Soze_AnyEnumSwitch:
+    """Switch / case for any-typed values, keyed by a string input.
+
+    Compares `enum_value` against up to 10 case strings (`compare_text_1..10`)
+    and outputs the matching `any_value_N`. If no case matches, `default_value`
+    is returned.
+
+    Matching rules:
+      - Case 1 wins ties (first match).
+      - Comparison is case-insensitive and trims surrounding whitespace by
+        default; toggle `case_sensitive`/`strip_whitespace` to change.
+      - Blank case strings are skipped (so an unconnected `compare_text_N`
+        widget won't accidentally match a blank `enum_value`).
+    """
+
+    MAX_CASES = 10
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        optional = {
+            "default_value": (_ANY, {"tooltip": "Returned when no compare_text_N matches."}),
+            "case_sensitive": ("BOOLEAN", {"default": False, "tooltip": "If True, 'A' != 'a'."}),
+            "strip_whitespace": ("BOOLEAN", {"default": True, "tooltip": "If True, surrounding whitespace is ignored on both sides."}),
+        }
+        for i in range(1, cls.MAX_CASES + 1):
+            optional[f"compare_text_{i}"] = ("STRING", {
+                "default": "",
+                "tooltip": f"Case {i} label. Blank means: skip this case.",
+            })
+            optional[f"any_value_{i}"] = (_ANY, {
+                "tooltip": f"Value returned when enum_value matches compare_text_{i}.",
+            })
+        return {
+            "required": {
+                "enum_value": ("STRING", {
+                    "default": "",
+                    "forceInput": True,
+                    "tooltip": "The value to match against each compare_text_N.",
+                }),
+            },
+            "optional": optional,
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = (_ANY, "INT", "BOOLEAN", "STRING")
+    RETURN_NAMES = ("matched_value", "matched_index", "matched", "status")
+    FUNCTION = "switch"
+    CATEGORY = "soze"
+
+    def switch(self, enum_value, default_value=None, case_sensitive=False,
+               strip_whitespace=True, unique_id=None, **kwargs):
+        # Normalize the lookup key.
+        key = enum_value if isinstance(enum_value, str) else str(enum_value if enum_value is not None else "")
+        if strip_whitespace:
+            key = key.strip()
+        if not case_sensitive:
+            key_cmp = key.casefold()
+        else:
+            key_cmp = key
+
+        matched_index = 0
+        matched_value = default_value
+        matched_label = None
+
+        for i in range(1, self.MAX_CASES + 1):
+            label = kwargs.get(f"compare_text_{i}", "")
+            if label is None:
+                continue
+            label_str = label if isinstance(label, str) else str(label)
+            if strip_whitespace:
+                label_str = label_str.strip()
+            if label_str == "":
+                continue  # blank case → skip
+            label_cmp = label_str if case_sensitive else label_str.casefold()
+            if label_cmp == key_cmp:
+                matched_index = i
+                matched_value = kwargs.get(f"any_value_{i}")
+                matched_label = label_str
+                break
+
+        matched_flag = matched_index > 0
+        if matched_flag:
+            status = f"OK: matched case {matched_index} ({matched_label!r})"
+        else:
+            status = f"OK: no case matched {key!r}; returning default_value"
+        push_node_status(unique_id, status)
+        return (matched_value, matched_index, matched_flag, status)
 
