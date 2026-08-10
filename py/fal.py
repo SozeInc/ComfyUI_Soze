@@ -1711,7 +1711,7 @@ class Soze_FALSeedream5ProEdit:
         required = {
             "prompt": ("STRING", {"default": "", "multiline": True}),
             "image_size": (SEEDREAM5_PRO_IMAGE_SIZE_CHOICES, {"default": "auto_2K"}),
-            "num_images": ("INT", {"default": 1, "min": 1, "max": 8, "step": 1}),
+            "num_images": ("INT", {"default": 1, "min": 1, "max": 6, "step": 1, "tooltip": "Separate generations to run (1-6)."}),
             "output_format": (SEEDREAM5_PRO_FORMAT_CHOICES, {"default": "jpeg"}),
             "enable_safety_checker": ("BOOLEAN", {"default": True}),
         }

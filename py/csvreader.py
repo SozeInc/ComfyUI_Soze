@@ -100,7 +100,15 @@ def _load_rows(csv_filename_path: str, csv_text: str = "") -> list[list[str]]:
         csv_data = _read_csv_lines(csv_path)
     else:
         return []
-    return list(csv.reader(csv_data))
+    rows = list(csv.reader(csv_data))
+    # Drop trailing blank rows. A trailing newline or blank lines — very common
+    # when pasting into the text box — otherwise become empty rows that inflate
+    # the row count, so the index runs past the real data (returning blank rows)
+    # instead of erroring when the data actually runs out. This makes the text
+    # box behave exactly like a CSV file.
+    while rows and all(not str(cell).strip() for cell in rows[-1]):
+        rows.pop()
+    return rows
 
 
 def _row_to_outputs(row: list[str]) -> tuple[list[str], str]:
