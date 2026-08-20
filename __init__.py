@@ -148,6 +148,21 @@ from .py.fal import (
     Veo31RefImgVideoNode,
 )
 
+from .py.fal_video_models import (
+    Soze_FALSeedance25ReferenceToVideo,
+    Soze_FALGeminiOmniFlashReferenceToVideo,
+    Soze_FALKlingV3TurboStandardImageToVideo,
+    Soze_FALGrokImagineReferenceToVideo,
+    Soze_FALHappyHorse11ReferenceToVideo,
+    Soze_FALKlingO34KReferenceToVideo,
+    Soze_FALPixVerseC1ReferenceToVideo,
+    Soze_FALKlingO1ProReferenceToVideo,
+    Soze_FALKlingO1StandardReferenceToVideo,
+    Soze_FALViduQ3ReferenceToVideoMix,
+    Soze_FALViduQ1ReferenceToVideo,
+    Soze_FALMirageAvatarXReferenceToVideo,
+)
+
 from .py.modelark import (
     Soze_ModelArkSeedance2,
     Soze_ModelArkSeedreamImages,
@@ -156,6 +171,17 @@ from .py.modelark import (
 from .py.oxenai import Soze_OxenAIChatCompletion
 
 from .py.minimax import Soze_MiniMaxH3Video, Soze_MiniMaxH3VideoReference
+
+from .py.tensorscale import (
+    Soze_TensorScaleMiniMaxH3,
+    Soze_TensorScaleMiniMaxH3Reference,
+    Soze_TensorScaleLTX25Fast,
+    Soze_TensorScaleLTX23Fast,
+    Soze_TensorScaleCosmos3NanoT2V,
+    Soze_TensorScaleCosmos3NanoV2V,
+    Soze_TensorScaleHunyuanImage3,
+    Soze_TensorScaleSenseNovaU15,
+)
 
 from .py.rmbg_deploy import Soze_ComfyDeployBiRefNetModelInput
 
@@ -181,6 +207,10 @@ from .py.converters import (
 from .py.video import Soze_AppendToVideo, Soze_LoadVideosFromFolder
 
 from .py.audio import Soze_LoadAudio
+
+from .py.av_combine import Soze_CombineVideo
+
+from .py.get_frame import Soze_GetFrame
 
 NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Load Image": Soze_LoadImage,
@@ -285,6 +315,14 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "Oxen AI Chat Completion": Soze_OxenAIChatCompletion,
                         "MiniMax H3 Video": Soze_MiniMaxH3Video,
                         "MiniMax H3 Video Reference": Soze_MiniMaxH3VideoReference,
+                        "TensorScale MiniMax H3 Video": Soze_TensorScaleMiniMaxH3,
+                        "TensorScale MiniMax H3 Video Reference": Soze_TensorScaleMiniMaxH3Reference,
+                        "TensorScale LTX-2.5 Fast Video": Soze_TensorScaleLTX25Fast,
+                        "TensorScale LTX-2.3 Fast Video": Soze_TensorScaleLTX23Fast,
+                        "TensorScale Cosmos3 Nano Text To Video": Soze_TensorScaleCosmos3NanoT2V,
+                        "TensorScale Cosmos3 Nano Video To Video": Soze_TensorScaleCosmos3NanoV2V,
+                        "TensorScale Hunyuan Image 3 Fast": Soze_TensorScaleHunyuanImage3,
+                        "TensorScale SenseNova U1.5": Soze_TensorScaleSenseNovaU15,
                         "ComfyDeploy BiRefNet Model Input": Soze_ComfyDeployBiRefNetModelInput,
                         "Checkpoint Enum Switch": Soze_EnumSwitchCheckpointLoader,
                         "Upscale Model Enum Switch": Soze_EnumSwitchUpscaleModelLoader,
@@ -305,6 +343,18 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         "FAL Kling O3 Reference Video To Video": Soze_FALKlingO3ReferenceVideoToVideo,
                         "FAL Topaz Upscale Video": Soze_FALTopazUpscaleVideo,
                         "FAL MiniMax H3 Reference To Video": Soze_FALMiniMaxH3ReferenceToVideo,
+                        "FAL Seedance 2.5 Reference To Video": Soze_FALSeedance25ReferenceToVideo,
+                        "FAL Gemini Omni Flash Reference To Video": Soze_FALGeminiOmniFlashReferenceToVideo,
+                        "FAL Kling V3 Turbo Standard Image To Video": Soze_FALKlingV3TurboStandardImageToVideo,
+                        "FAL Grok Imagine Reference To Video": Soze_FALGrokImagineReferenceToVideo,
+                        "FAL Happy Horse 1.1 Reference To Video": Soze_FALHappyHorse11ReferenceToVideo,
+                        "FAL Kling O3 4K Reference To Video": Soze_FALKlingO34KReferenceToVideo,
+                        "FAL PixVerse C1 Reference To Video": Soze_FALPixVerseC1ReferenceToVideo,
+                        "FAL Kling O1 Pro Reference To Video": Soze_FALKlingO1ProReferenceToVideo,
+                        "FAL Kling O1 Standard Reference To Video": Soze_FALKlingO1StandardReferenceToVideo,
+                        "FAL Vidu Q3 Reference To Video Mix": Soze_FALViduQ3ReferenceToVideoMix,
+                        "FAL Vidu Q1 Reference To Video": Soze_FALViduQ1ReferenceToVideo,
+                        "FAL Mirage Avatar X Reference To Video": Soze_FALMirageAvatarXReferenceToVideo,
                         
                         #Converters
                         "Int To String": Soze_IntToString,
@@ -327,6 +377,8 @@ NODE_CLASS_MAPPINGS = { "Output Filename": Soze_OutputFilename,
                         #Video
                         "Append To Video": Soze_AppendToVideo,
                         "Load Videos From Folder": Soze_LoadVideosFromFolder,
+                        "Combine Video": Soze_CombineVideo,
+                        "Get Frame": Soze_GetFrame,
                         
                         #Files
                         "Does File Exist": Soze_DoesFileExist,
@@ -442,6 +494,14 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "Oxen AI Chat Completion": "Oxen AI Chat Completion (Soze)",
                                 "MiniMax H3 Video": "MiniMax H3 Video (Soze)",
                                 "MiniMax H3 Video Reference": "MiniMax H3 Video Reference (Soze)",
+                                "TensorScale MiniMax H3 Video": "TensorScale MiniMax H3 Video (Soze)",
+                                "TensorScale MiniMax H3 Video Reference": "TensorScale MiniMax H3 Video Reference (Soze)",
+                                "TensorScale LTX-2.5 Fast Video": "TensorScale LTX-2.5 Fast Video (Soze)",
+                                "TensorScale LTX-2.3 Fast Video": "TensorScale LTX-2.3 Fast Video (Soze)",
+                                "TensorScale Cosmos3 Nano Text To Video": "TensorScale Cosmos3 Nano Text To Video (Soze)",
+                                "TensorScale Cosmos3 Nano Video To Video": "TensorScale Cosmos3 Nano Video To Video (Soze)",
+                                "TensorScale Hunyuan Image 3 Fast": "TensorScale Hunyuan Image 3 Fast (Soze)",
+                                "TensorScale SenseNova U1.5": "TensorScale SenseNova U1.5 (Soze)",
                                 "ComfyDeploy BiRefNet Model Input": "ComfyDeploy BiRefNet Model Input (Soze)",
                                 "Checkpoint Enum Switch": "Checkpoint Enum Switch 10X (Soze)",
                                 "Upscale Model Enum Switch": "Upscale Model Enum Switch 10X (Soze)",
@@ -462,6 +522,18 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 "FAL Kling O3 Reference Video To Video": "FAL Kling O3 Reference Video To Video (Soze)",
                                 "FAL Topaz Upscale Video": "FAL Topaz Upscale Video (Soze)",
                                 "FAL MiniMax H3 Reference To Video": "FAL MiniMax H3 Reference To Video (Soze)",
+                                "FAL Seedance 2.5 Reference To Video": "FAL Seedance 2.5 Reference To Video (Soze)",
+                                "FAL Gemini Omni Flash Reference To Video": "FAL Gemini Omni Flash Reference To Video (Soze)",
+                                "FAL Kling V3 Turbo Standard Image To Video": "FAL Kling V3 Turbo Standard Image To Video (Soze)",
+                                "FAL Grok Imagine Reference To Video": "FAL Grok Imagine Reference To Video (Soze)",
+                                "FAL Happy Horse 1.1 Reference To Video": "FAL Happy Horse 1.1 Reference To Video (Soze)",
+                                "FAL Kling O3 4K Reference To Video": "FAL Kling O3 4K Reference To Video (Soze)",
+                                "FAL PixVerse C1 Reference To Video": "FAL PixVerse C1 Reference To Video (Soze)",
+                                "FAL Kling O1 Pro Reference To Video": "FAL Kling O1 Pro Reference To Video (Soze)",
+                                "FAL Kling O1 Standard Reference To Video": "FAL Kling O1 Standard Reference To Video (Soze)",
+                                "FAL Vidu Q3 Reference To Video Mix": "FAL Vidu Q3 Reference To Video Mix (Soze)",
+                                "FAL Vidu Q1 Reference To Video": "FAL Vidu Q1 Reference To Video (Soze)",
+                                "FAL Mirage Avatar X Reference To Video": "FAL Mirage Avatar X Reference To Video (Soze)",
                                 
                                 #Converters
                                 "Int To String": "Int To String (Soze)",
@@ -484,6 +556,8 @@ NODE_DISPLAY_NAME_MAPPINGS = { "Output Filename": "Output Filename (Soze)",
                                 #Video
                                 "Append To Video": "Append To Video (Soze)",
                                 "Load Videos From Folder": "Load Videos From Folder (Soze)",
+                                "Combine Video": "Combine Video (Soze)",
+                                "Get Frame": "Get Frame (Soze)",
                                 
                                 #Files
                                 "Does File Exist": "Does File Exist (Soze)",
