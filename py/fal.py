@@ -824,6 +824,290 @@ class Soze_FALGPTImage2:
 
 
 # ---------------------------------------------------------------------------
+# OpenAI GPT Image 2.5 — flare / sunburst edit (via FAL)
+# ---------------------------------------------------------------------------
+
+
+GPT_IMAGE_25_SIZE_CHOICES = GPT_IMAGE_2_SIZE_CHOICES
+GPT_IMAGE_25_QUALITY_CHOICES = ["auto", "low", "medium", "high", "xhigh", "max"]
+GPT_IMAGE_25_BACKGROUND_CHOICES = ["auto", "transparent", "opaque"]
+GPT_IMAGE_25_FORMAT_CHOICES = ["png", "jpeg", "webp"]
+MAX_GPT_IMAGE_25_INPUTS = 16
+
+# fal coerces most out-of-range sizes (snaps to multiples of 16, scales into its
+# pixel bounds) but refuses anything wider than 3:1 with HTTP 422, so that one
+# limit is checked locally before spending a call.
+GPT_IMAGE_25_MAX_ASPECT = 3.0
+
+# fal's published per-image price, identical for flare and sunburst. Keyed by
+# (long edge, short edge) of the *delivered* image, which is the billed size.
+# Prompt text tokens are billed on top, so treat these as a floor.
+GPT_IMAGE_25_PRICES = {
+    (1024, 768):  {"low": 0.00402, "medium": 0.00903, "high": 0.03612, "xhigh": 0.06420, "max": 0.14445},
+    (1024, 1024): {"low": 0.00588, "medium": 0.01317, "high": 0.05268, "xhigh": 0.09366, "max": 0.21072},
+    (1536, 1024): {"low": 0.00474, "medium": 0.01029, "high": 0.04116, "xhigh": 0.07377, "max": 0.16464},
+    (1920, 1080): {"low": 0.00441, "medium": 0.01029, "high": 0.03960, "xhigh": 0.07041, "max": 0.15840},
+    (2560, 1440): {"low": 0.00615, "medium": 0.01434, "high": 0.05529, "xhigh": 0.09828, "max": 0.22110},
+    (3840, 2160): {"low": 0.01113, "medium": 0.02595, "high": 0.10008, "xhigh": 0.17790, "max": 0.40026},
+}
+
+
+def _gpt_image_25_price(width, height, quality):
+    """Per-image price for a delivered size, or None when fal publishes no row
+    for it (or quality is 'auto', whose real tier is unknown)."""
+    row = GPT_IMAGE_25_PRICES.get((max(width, height), min(width, height)))
+    if row is None:
+        return None
+    return row.get(quality)
+
+
+def _download_image_rgba(url: str):
+    """Download a result into ([1,H,W,3] image, [1,H,W] mask).
+
+    The mask follows ComfyUI's LoadImage convention (1 - alpha), so a
+    transparent-background render keeps its cut-out instead of being flattened.
+    Images without alpha get an all-zero mask.
+    """
+    if url.startswith("data:"):
+        import base64
+        _, _, b64 = url.partition(",")
+        pil = Image.open(io.BytesIO(base64.b64decode(b64)))
+    else:
+        resp = requests.get(url, timeout=HTTP_TIMEOUT, stream=True)
+        resp.raise_for_status()
+        pil = Image.open(io.BytesIO(resp.content))
+    rgb = np.array(pil.convert("RGB")).astype(np.float32) / 255.0
+    if "A" in pil.getbands():
+        alpha = np.array(pil.getchannel("A")).astype(np.float32) / 255.0
+        mask = 1.0 - alpha
+    else:
+        mask = np.zeros(rgb.shape[:2], dtype=np.float32)
+    return torch.from_numpy(rgb)[None,], torch.from_numpy(mask)[None,]
+
+
+def _batch_align_masks(masks, height, width):
+    """Cat [1,H,W] masks, resizing any that differ to the batch's image size."""
+    aligned = []
+    for m in masks:
+        if m.shape[1] != height or m.shape[2] != width:
+            m = common_upscale(m[:, None], width, height, "bilinear", "center")[:, 0]
+        aligned.append(m)
+    return torch.cat(aligned, dim=0)
+
+
+class _FALGPTImage25EditBase:
+    """Shared body for the GPT Image 2.5 edit endpoints. flare and sunburst take
+    byte-identical requests at identical prices; subclasses only set ENDPOINT.
+
+    Connect 1-16 references (image_1..image_16 or image_batch); each is uploaded
+    to FAL and sent in `image_urls`. An optional MASK goes up as `mask_url`.
+    """
+
+    ENDPOINT = ""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        required = {
+            "prompt": ("STRING", {"default": "", "multiline": True}),
+            "image_size": (GPT_IMAGE_25_SIZE_CHOICES, {"default": "auto", "tooltip": "'auto' infers size from the input images. Presets resolve small (landscape_16_9 is 1088x608) - set width/height when the canvas matters."}),
+            "quality": (GPT_IMAGE_25_QUALITY_CHOICES, {"default": "high", "tooltip": "GPT Image 2.5 has five tiers. Its 'high' matches GPT Image 2's 'medium'; to match GPT Image 2 at 'high', use 'max' (4x the cost of 'high')."}),
+            "num_images": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1, "tooltip": "Billed per image."}),
+            "output_format": (GPT_IMAGE_25_FORMAT_CHOICES, {"default": "png"}),
+            "background": (GPT_IMAGE_25_BACKGROUND_CHOICES, {"default": "auto", "tooltip": "'transparent' needs png or webp. The cut-out comes back on the alpha_mask output."}),
+        }
+        optional = {}
+        for i in range(1, MAX_GPT_IMAGE_25_INPUTS + 1):
+            optional[f"image_{i}"] = ("IMAGE", {"tooltip": f"Reference image slot {i}. Overrides image_batch when connected."})
+        optional["image_batch"] = ("IMAGE", {"tooltip": f"Optional IMAGE batch, one reference per frame (first {MAX_GPT_IMAGE_25_INPUTS} used). Ignored if any image_N slot is connected."})
+        optional["mask"] = ("MASK", {"tooltip": "Optional mask of the region to edit. Sent as mask_url."})
+        optional["width"] = ("INT", {"default": 0, "min": 0, "max": 3840, "step": 16, "tooltip": "Custom canvas width. Set both width and height to override image_size; 0 = use image_size. Aspect ratio must stay within 3:1."})
+        optional["height"] = ("INT", {"default": 0, "min": 0, "max": 3840, "step": 16, "tooltip": "Custom canvas height. See width."})
+        optional["output_compression"] = ("INT", {"default": -1, "min": -1, "max": 100, "step": 1, "tooltip": "0-100, jpeg and webp only. -1 = fal default."})
+        optional["sync_mode"] = ("BOOLEAN", {"default": False, "tooltip": "If True, FAL returns images as data URIs instead of public URLs, and keeps them out of request history."})
+        return {"required": required, "optional": optional, "hidden": {"unique_id": "UNIQUE_ID"}}
+
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "INT", "STRING")
+    RETURN_NAMES = ("images", "alpha_mask", "image_urls", "image_count", "status")
+    FUNCTION = "edit"
+    CATEGORY = "FAL/ImageGeneration"
+
+    @staticmethod
+    def _fail(headline, log, unique_id, urls=""):
+        push_node_status(unique_id, headline, log)
+        return (torch.zeros((1, 64, 64, 3), dtype=torch.float32),
+                torch.zeros((1, 64, 64), dtype=torch.float32),
+                urls, 0, finalize_status(headline, log))
+
+    def edit(self, prompt, image_size, quality, num_images, output_format, background,
+             image_batch=None, mask=None, width=0, height=0, output_compression=-1,
+             sync_mode=False, unique_id=None, **slots):
+        endpoint = self.ENDPOINT
+        log = EventLog()
+        custom_size = width > 0 and height > 0
+        size_label = f"{width}x{height}" if custom_size else image_size
+        log.add(f"Config: {endpoint} | {size_label} | {quality} | n={num_images} | {output_format} | bg={background}")
+
+        # 1) Validate locally - each of these is a call fal would refuse or
+        #    silently degrade.
+        if _is_blank(prompt):
+            return self._fail("GPT Image 2.5 edit skipped: prompt is blank.", log, unique_id)
+        if background == "transparent" and output_format == "jpeg":
+            return self._fail("GPT Image 2.5 edit skipped: a transparent background needs png or webp - jpeg has no alpha channel.", log, unique_id)
+        if (width > 0) != (height > 0):
+            return self._fail("GPT Image 2.5 edit skipped: set both width and height for a custom size, or leave both at 0.", log, unique_id)
+        if custom_size and max(width, height) / min(width, height) > GPT_IMAGE_25_MAX_ASPECT:
+            return self._fail(f"GPT Image 2.5 edit skipped: {width}x{height} is wider than 3:1, which fal refuses (HTTP 422).", log, unique_id)
+
+        # 2) Collect references: image_N slots win over image_batch.
+        slot_pairs = []
+        for i in range(1, MAX_GPT_IMAGE_25_INPUTS + 1):
+            tensor = slots.get(f"image_{i}")
+            if tensor is not None:
+                slot_pairs.append((f"image_{i}", tensor[0:1]))
+        if slot_pairs:
+            if image_batch is not None:
+                push_node_status(unique_id, "Note: image_batch is ignored because individual image_N slot(s) are connected.", log)
+        elif image_batch is not None and image_batch.shape[0] > 0:
+            frames = image_batch.shape[0]
+            if frames > MAX_GPT_IMAGE_25_INPUTS:
+                push_node_status(unique_id, f"image_batch has {frames} frames; using the first {MAX_GPT_IMAGE_25_INPUTS} (API max).", log)
+            for i in range(min(frames, MAX_GPT_IMAGE_25_INPUTS)):
+                slot_pairs.append((f"batch[{i}]", image_batch[i:i+1]))
+        else:
+            return self._fail("GPT Image 2.5 edit skipped: no reference images connected (no image_N slot and no image_batch).", log, unique_id)
+
+        push_node_status(unique_id, f"Uploading {len(slot_pairs)} reference image(s)...", log)
+        image_urls = []
+        upload_failures = []
+        for label, tensor in slot_pairs:
+            try:
+                url = ImageUtils.upload_image(tensor)
+            except Exception as e:
+                logger.exception("GPT Image 2.5: %s upload raised", label)
+                upload_failures.append(f"{label}: {e!r}")
+                continue
+            if url:
+                image_urls.append(url)
+            else:
+                upload_failures.append(f"{label}: uploader returned None (see ComfyUI log)")
+        if not image_urls:
+            details = "; ".join(upload_failures) or "no upload error captured"
+            return self._fail(f"GPT Image 2.5 edit failed: every reference upload failed. {details}", log, unique_id)
+
+        mask_url = None
+        if mask is not None:
+            push_node_status(unique_id, "Uploading mask...", log)
+            try:
+                mask_url = _upload_pil(_mask_to_pil(mask))
+            except Exception as e:
+                logger.exception("GPT Image 2.5: mask upload raised")
+                push_node_status(unique_id, f"Mask upload failed: {e!r}", log)
+            if mask_url is None:
+                # An edit meant for one region must not silently repaint the whole frame.
+                return self._fail("GPT Image 2.5 edit failed: the mask could not be uploaded, and editing without it would change the whole image.", log, unique_id)
+
+        # 3) Build the request.
+        arguments = {
+            "prompt": prompt.strip(),
+            "image_urls": image_urls,
+            "image_size": {"width": int(width), "height": int(height)} if custom_size else image_size,
+            "quality": quality,
+            "num_images": int(num_images),
+            "output_format": output_format,
+            "background": background,
+        }
+        if mask_url:
+            arguments["mask_url"] = mask_url
+        if output_compression >= 0:
+            if output_format in ("jpeg", "webp"):
+                arguments["output_compression"] = int(output_compression)
+            else:
+                push_node_status(unique_id, "Note: output_compression ignored - it applies to jpeg and webp only.", log)
+        if sync_mode:
+            arguments["sync_mode"] = True
+
+        push_node_status(unique_id, f"Submitting to {endpoint}...", log)
+        try:
+            result = ApiHandler.submit_and_get_result(endpoint, arguments)
+        except Exception as e:
+            logger.exception("GPT Image 2.5 edit failed (%s)", endpoint)
+            return self._fail(f"ERROR ({endpoint}): {e!r}", log, unique_id)
+
+        result_urls = []
+        for entry in result.get("images") or []:
+            if isinstance(entry, dict) and entry.get("url"):
+                result_urls.append(entry["url"])
+            elif isinstance(entry, str):
+                result_urls.append(entry)
+        if not result_urls:
+            return self._fail(f"ERROR ({endpoint}): API returned no images. Response: {result!r}", log, unique_id)
+
+        # 4) Download, keeping alpha.
+        push_node_status(unique_id, f"Downloading {len(result_urls)} result image(s)...", log)
+        images, masks = [], []
+        for i, u in enumerate(result_urls):
+            try:
+                img, m = _download_image_rgba(u)
+            except Exception as e:
+                logger.exception("GPT Image 2.5: failed to load result image %s", u[:120])
+                push_node_status(unique_id, f"Skip result {i+1}: {e!r}", log)
+                continue
+            images.append(img)
+            masks.append(m)
+        # sync_mode results are data URIs - too large to be useful as a STRING output.
+        urls_str = "\n".join("(data URI)" if u.startswith("data:") else u for u in result_urls)
+        if not images:
+            return self._fail("ERROR: every result image failed to load.", log, unique_id, urls_str)
+
+        images_out = _batch_align_images(images)
+        out_h, out_w = images_out.shape[1], images_out.shape[2]
+        masks_out = _batch_align_masks(masks, out_h, out_w)
+
+        if upload_failures:
+            push_node_status(unique_id, f"Note: {len(upload_failures)} reference upload(s) failed: " + "; ".join(upload_failures), log)
+
+        # fal snaps custom sizes (multiples of 16, pixel bounds) rather than refusing,
+        # and bills what it delivers - say so when the two differ.
+        first_h, first_w = images[0].shape[1], images[0].shape[2]
+        if custom_size and (first_w, first_h) != (width, height):
+            push_node_status(unique_id, f"Note: asked for {width}x{height}, fal delivered {first_w}x{first_h} (and bills the delivered size).", log)
+
+        unit = _gpt_image_25_price(first_w, first_h, quality)
+        if unit is not None:
+            push_node_status(unique_id, f"Cost: ~${unit * len(images):.4f} ({len(images)} x ${unit} at {first_w}x{first_h} {quality}, fal's table; prompt tokens extra).", log)
+        else:
+            reason = "quality 'auto' hides the real tier" if quality == "auto" else f"fal publishes no price for {first_w}x{first_h}"
+            push_node_status(unique_id, f"Cost: not estimated - {reason}.", log)
+
+        headline = f"OK ({endpoint}): {len(images)}/{len(result_urls)} image(s), size={out_w}x{out_h}"
+        push_node_status(unique_id, headline, log)
+        return (images_out, masks_out, urls_str, len(images), finalize_status(headline, log))
+
+
+class Soze_FALGPTImage25FlareEdit(_FALGPTImage25EditBase):
+    """OpenAI GPT Image 2.5 flare edit, via FAL (endpoint: openai/gpt-image-2.5/flare/edit).
+
+    The default of the two 2.5 variants: faster, same price as sunburst.
+    """
+
+    ENDPOINT = "openai/gpt-image-2.5/flare/edit"
+    DESCRIPTION = ("GPT Image 2.5 flare edit - OpenAI's default image model. Changes only what the prompt asks, "
+                   "keeping subject, composition and background. Same price as sunburst, and quicker.")
+
+
+class Soze_FALGPTImage25SunburstEdit(_FALGPTImage25EditBase):
+    """OpenAI GPT Image 2.5 sunburst edit, via FAL (endpoint: openai/gpt-image-2.5/sunburst/edit).
+
+    The precision variant: slower, same price as flare. Reach for it when
+    intricate detail matters or a plate goes through many rounds of editing.
+    """
+
+    ENDPOINT = "openai/gpt-image-2.5/sunburst/edit"
+    DESCRIPTION = ("GPT Image 2.5 sunburst edit - the precision-focused variant. Tightest edit scoping, holds up "
+                   "across many rounds of revision. Same price as flare, but slower.")
+
+
+# ---------------------------------------------------------------------------
 # Kling O1 — shared helpers for all four flavors
 # ---------------------------------------------------------------------------
 
